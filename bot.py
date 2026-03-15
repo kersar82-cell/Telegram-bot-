@@ -610,23 +610,27 @@ async def admin_direct_msg(message: types.Message):
 
 
 # --- ১. কিবোর্ড ফাংশন (এটি লাইনের শুরুতে থাকবে) ---
+# --- ১. কিবোর্ড ফাংশন ---
 def rules_price_menu():
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add("IG 2fa Rules", "IG Cookies Rules")
-    keyboard.add("Ig mother account Rules", "Fb 00 fnd 2fa Rules")
-    keyboard.add("🔄 রিফ্রেশ") 
+    # বাটনগুলো সুন্দর করে দুই সারিতে সাজানো হয়েছে
+    keyboard.row("IG 2fa Rules", "IG Cookies Rules")
+    keyboard.row("Ig mother account Rules", "Fb 00 fnd 2fa Rules")
+    keyboard.row("🔙 ফিরে যান") 
     return keyboard
 
-# --- ২. মেইন বাটন হ্যান্ডলার ---
-@dp.message_handler(lambda message: message.text == "🔴Rules & Price")
-async def rules_price_handler(message: types.Message):
+# --- ২. মেইন বাটন হ্যান্ডলার (🔴Rules & Price) ---
+@dp.message_handler(lambda message: message.text == "🔴Rules & Price", state="*")
+async def rules_price_handler(message: types.Message, state: FSMContext):
+    # ইউজার অন্য কোনো কাজে আটকে থাকলে সেটা ক্লিয়ার করে মেনু দেখাবে
     await message.answer(
-        "👉 যে ক্যাটাগরির নিয়ম এবং রেট জানতে চান,\n\n👇 নিচের বাটন থেকে সেটি সিলেক্ট করুন:",
-        reply_markup=rules_price_menu()
+        "👉 **যে ক্যাটাগরির নিয়ম এবং রেট জানতে চান,**\n\n👇 নিচের বাটন থেকে সেটি সিলেক্ট করুন:",
+        reply_markup=rules_price_menu(),
+        parse_mode="Markdown"
     )
 
-# --- ৩. রুলস মেসেজ হ্যান্ডলার ---
-@dp.message_handler(lambda message: message.text in ["IG 2fa Rules", "IG Cookies Rules", "Ig mother account Rules", "Fb 00 fnd 2fa Rules"])
+# --- ৩. সাব-বাটন হ্যান্ডলার (রুলস দেখানোর জন্য) ---
+@dp.message_handler(lambda message: message.text in ["IG 2fa Rules", "IG Cookies Rules", "Ig mother account Rules", "Fb 00 fnd 2fa Rules"], state="*")
 async def show_only_rules(message: types.Message):
     category = message.text
     msg = ""
@@ -667,6 +671,10 @@ async def show_only_rules(message: types.Message):
             "⏰ আইডি সাবমিট লাস্ট টাইম: রাত ১০:০০ মিনিট।\n\n"
             "⏳ **রিপোর্ট টাইম: ৫ ঘণ্টা।**"
         )
+    
+    if msg:
+        await message.answer(msg, parse_mode="Markdown")
+                    
     # --- ১. টিম ওয়ার্ক মেইন মেনু ---
 @dp.message_handler(lambda message: message.text == "👥 Team Work")
 async def team_work_home(message: types.Message):
