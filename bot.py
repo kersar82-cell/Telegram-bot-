@@ -791,6 +791,54 @@ async def show_all_teams_handler(message: types.Message):
         txt += f"🔹 {t[1]} — আইডি: `{t[0]}`\n"
     txt += "\n🤝 জয়েন করতে লিখুন: `/join আইডি`"
     await message.answer(txt, parse_mode="Markdown")
+    # --- মাই স্ট্যাটাস (আপডেট করা) ---
+@dp.message_handler(lambda message: message.text == "📊 My Status")
+async def my_status_handler(message: types.Message):
+    user_id = message.from_user.id
+    
+    # চেক করা ইউজার কোন টিমে আছে
+    cursor.execute("SELECT team_id FROM team_members WHERE user_id=?", (user_id,))
+    res = cursor.fetchone()
+    
+    if res:
+        t_id = res[0]
+        
+        # ১. টিমের সাধারণ তথ্য (নাম, লিডার, টার্গেট) আনা
+        cursor.execute("SELECT team_name, leader_id, daily_target FROM teams WHERE team_id=?", (t_id,))
+        t_info = cursor.fetchone()
+        
+        # ২. টিমে মোট কতজন মেম্বার আছে তা গণনা করা
+        cursor.execute("SELECT COUNT(user_id) FROM team_members WHERE team_id=?", (t_id,))
+        member_count = cursor.fetchone()[0]
+        
+        # ৩. ওই টিমের সকল মেম্বারের পাঠানো মোট ফাইল এবং সিঙ্গেল আইডির যোগফল বের করা
+        # এটি কাজ করার জন্য stats টেবিলে user_id থাকতে হবে
+        cursor.execute('''SELECT SUM(stats.file_count), SUM(stats.single_id_count) 
+                          FROM team_members 
+                          LEFT JOIN stats ON team_members.user_id = stats.user_id 
+                          WHERE team_members.team_id=?''', (t_id,))
+        work_stats = cursor.fetchone()
+        
+        total_files = work_stats[0] if work_stats[0] else 0
+        total_singles = work_stats[1] if work_stats[1] else 0
+
+        # মেসেজ ফরম্যাট
+        msg = (
+            f"📊 **আপনার টিমের স্ট্যাটাস**\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"👥 **টিমের নাম:** {t_info[0]}\n"
+            f"🆔 **টিম আইডি:** `{t_id}`\n"
+            f"👑 **টিম লিডার আইডি:** `{t_info[1]}`\n"
+            f"👨‍ন্ত**মোট মেম্বার:** {member_count} জন\n"
+            f"🎯 **ডেইলি টার্গেট:** {t_info[2]} টি\n\n"
+            f"📈 **টিমের মোট কাজের রিপোর্ট:**\n"
+            f"📁 মোট ফাইল জমা: {total_files} টি\n"
+            f"🆔 মোট সিঙ্গেল আইডি: {total_singles} টি\n"
+            f"━━━━━━━━━━━━━━━━━━"
+        )
+        await message.answer(msg, parse_mode="Markdown")
+    else:
+        await message.answer("❌ আপনি বর্তমানে কোনো টিমে যুক্ত নেই।")
     
 if __name__ == '__main__':
     keep_alive()
