@@ -44,14 +44,20 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS users
 db.commit()
 cursor.execute('''ALTER TABLE users ADD COLUMN referral_count INTEGER DEFAULT 0''')
 db.commit()
+cursor.execute('''CREATE TABLE IF NOT EXISTS teams 
+                  (team_id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                   team_name TEXT, 
+                   leader_id INTEGER, 
+                   daily_target INTEGER)''')
+cursor.execute('''CREATE TABLE IF NOT EXISTS team_members 
+                  (user_id INTEGER PRIMARY KEY, team_id INTEGER)''')
+db.commit()
 
 class BotState(StatesGroup):
     waiting_for_file = State()
     waiting_for_address = State()
     waiting_for_withdraw_amount = State()
     waiting_for_add_money = State()
-    waiting_for_add_money = State()
-    # নিচে এই ৩টি লাইন লিখে দিন
     waiting_for_single_user = State()
     waiting_for_single_pass = State()
     waiting_for_single_2fa = State()
@@ -60,11 +66,14 @@ class BotState(StatesGroup):
     waiting_for_admin_msg = State()
     waiting_for_team_name = State()
     waiting_for_referrer_info = State() # এটি নতুন যোগ করুন
+    class BotState(StatesGroup):
+    # আপনার আগের সব স্টেট এখানে থাকবে...
+    waiting_for_team_name = State()   # টিমের নাম নেওয়ার জন্য
+    waiting_for_team_target = State() # ডেইলি টার্গেট নেওয়ার জন্য (এটি নতুন যোগ করুন)
+    # আপনার আগের সব স্টেট এখানে থাকবে...
+    waiting_for_team_name = State()   # টিমের নাম নেওয়ার জন্য
+    waiting_for_team_target = State() # ডেইলি টার্গেট নেওয়ার জন্য (এটি নতুন যোগ করুন)
     
-async def is_blocked(user_id):
-    cursor.execute("SELECT user_id FROM blacklist WHERE user_id=?", (user_id,))
-    return cursor.fetchone() is not None
-
 def main_menu():
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     # প্রথম সারি: দুই ধরণের কাজের বাটন
@@ -73,6 +82,7 @@ def main_menu():
     keyboard.row("💴Withdraw", "👥 Referral")
     # তৃতীয় সারি: সাপোর্ট এবং রুলস
     keyboard.row("🧑‍💻Support", "🔴Rules & Price")
+    keyboard.row("👥 Team Work")
     return keyboard
     
 # /start কমান্ডে মেইন মেনু ও ফ্রী ফায়ার বাটন
@@ -650,7 +660,99 @@ async def show_only_rules(message: types.Message):
             "⏰ আইডি সাবমিট লাস্ট টাইম: রাত ১০:০০ মিনিট।\n\n"
             "⏳ **রিপোর্ট টাইম: ৫ ঘণ্টা।**"
         )
+    # --- শর্ত ১: টিম ওয়ার্ক মেইন মেনু ---
+@dp.message_handler(lambda message: message.text == "👥 Team Work")
+async def team_work_home(message: types.Message):
+    await message.answer("👥 টিম ওয়ার্ক প্যানেলে আপনাকে স্বাগতম।", reply_markup=team_main_menu())
+
+# --- শর্ত ২: জয়েন টিম অপশন ---
+@dp.message_handler(lambda message: message.text == "🤝 Join Team")
+async def join_team_home(message: types.Message):
+    await message.answer("নিচের যেকোনো একটি অপশন বেছে নিন:", reply_markup=join_team_options())
+
+# --- ক্রিয়েট টিম লজিক (নাম এবং টার্গেট) ---
+@dp.message_handler(lambda message: message.text == "🏗️ Create Team")
+async def start_team_creation(message: types.Message):
+    await message.answer("📝 আপনার টিমের নাম কি হবে?")
+    await BotState.waiting_for_team_name.set()
+
+@dp.message_handler(state=BotState.waiting_for_team_name)
+async def get_team_target(message: types.Message, state: FSMContext):
+    await state.update_data(t_name=message.text)
+    await message.answer("🎯 আপনি বা আপনার টিম ডেইলি কতগুলো আইডি জমা দিতে পারবে? (সংখ্যা লিখুন)")
+    # একটি নতুন স্টেট যোগ করুন: waiting_for_team_target
+    await BotState.waiting_for_team_target.set()
+
+@dp.message_handler(state=BotState.waiting_for_team_target)
+async def finalize_team(message: types.Message, state: FSMContext):
+    try:
+        target = int(message.text)
+        data = await state.get_data()
+        t_name = data.get('t_name')
+        l_id = message.from_user.id
+        
+        cursor.execute("INSERT INTO teams (team_name, leader_id, daily_target) VALUES (?, ?, ?)", 
+                       (t_name, l_id, target))
+        db.commit()
+        t_id = cursor.lastrowid
+        
+        # লিডারকে মেম্বার হিসেবে যোগ করা
+        cursor.execute("INSERT OR REPLACE INTO team_members (user_id, team_id) VALUES (?, ?)", (l_id, t_id))
+        db.commit()
+        
+        await message.answer(f"✅ টিম সফলভাবে তৈরি হয়েছে!\n\n📛 নাম: {t_name}\n🎯 ডেইলি টার্গেট: {target}\n🆔 টিম আইডি: `{t_id}`", reply_markup=team_main_menu())
+        await state.finish()
+    except:
+        await message.answer("❌ টার্গেট অবশ্যই সংখ্যায় হতে হবে। আবার চেষ্টা করুন।")
+
+# --- বর্তমানে যতগুলো টিম আছে সবগুলোর আইডি দেখানো ---
+@dp.message_handler(lambda message: message.text == "🔗 Join Existing Team")
+async def show_all_teams(message: types.Message):
+    cursor.execute("SELECT team_id, team_name FROM teams")
+    all_teams = cursor.fetchall()
     
+    if not all_teams:
+        return await message.answer("বর্তমানে কোনো টিম তৈরি করা নেই।")
+    
+    list_text = "📍 **বর্তমানে সচল সকল টিমের আইডি:**\n\n"
+    for team in all_teams:
+        list_text += f"🔹 {team[1]} — আইডি: `{team[0]}`\n"
+    
+    list_text += "\n🤝 টিমে জয়েন করতে লিখুন: `/join [আইডি]`"
+    await message.answer(list_text, parse_mode="Markdown")
+
+# কমান্ডের মাধ্যমে জয়েন হওয়া
+@dp.message_handler(commands=['join'])
+async def join_by_cmd(message: types.Message):
+    args = message.get_args()
+    if not args:
+        return await message.answer("⚠️ সঠিক নিয়ম: `/join ১২৩`")
+    
+    t_id = args
+    cursor.execute("SELECT team_name FROM teams WHERE team_id=?", (t_id,))
+    team = cursor.fetchone()
+    
+    if team:
+        cursor.execute("INSERT OR REPLACE INTO team_members (user_id, team_id) VALUES (?, ?)", (message.from_user.id, t_id))
+        db.commit()
+        await message.answer(f"✅ অভিনন্দন! আপনি **{team[0]}** টিমে যোগ দিয়েছেন।")
+    else:
+        await message.answer("❌ এই আইডি দিয়ে কোনো টিম পাওয়া যায়নি।")
+
+# --- মাই স্ট্যাটাস (টিম মেম্বার হিসেবে নিজের তথ্য) ---
+@dp.message_handler(lambda message: message.text == "📊 My Status")
+async def my_team_status(message: types.Message):
+    cursor.execute("SELECT team_id FROM team_members WHERE user_id=?", (message.from_user.id,))
+    res = cursor.fetchone()
+    
+    if res:
+        t_id = res[0]
+        cursor.execute("SELECT team_name, daily_target FROM teams WHERE team_id=?", (t_id,))
+        t_info = cursor.fetchone()
+        await message.answer(f"📊 **আপনার স্ট্যাটাস**\n━━━━━━━━━━━━━━━\n👥 টিম: {t_info[0]}\n🆔 টিম আইডি: `{t_id}`\n🎯 টিমের লক্ষ্য: {t_info[1]} আইডি/দিন")
+    else:
+        await message.answer("❌ আপনি কোনো টিমে নেই।")
+                         
     if msg:
         await message.answer(msg, parse_mode="Markdown")
     
