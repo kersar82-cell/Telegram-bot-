@@ -756,9 +756,21 @@ async def join_team_options_handler(message: types.Message):
     keyboard.row("🔙 ফিরে যান")
     await message.answer("নিচের অপশন থেকে একটি বেছে নিন:", reply_markup=keyboard)
 
-# --- ৩. ক্রিয়েট টিম লজিক (র্যান্ডম আইডি সহ) ---
+# --- ৩. ক্রিয়েট টিম লজিক (লিমিট সহ) ---
 @dp.message_handler(lambda message: message.text == "🏗️ Create Team")
 async def start_team_creation(message: types.Message):
+    user_id = message.from_user.id
+    
+    # এডমিন কি না চেক করা (এডমিনের জন্য কোনো লিমিট নেই)
+    if user_id != ADMIN_ID:
+        # ডাটাবেসে চেক করা এই ইউজার ইতিমধ্যে কয়টি টিমের লিডার
+        cursor.execute("SELECT COUNT(*) FROM teams WHERE leader_id=?", (user_id,))
+        team_count = cursor.fetchone()[0]
+        
+        # এখানে ১ এর জায়গায় আপনি যত ইচ্ছা লিমিট দিতে পারেন
+        if team_count >= 1:
+            return await message.answer("❌ আপনি ইতিমধ্যে একটি টিম খুলেছেন। একজন ইউজার একটির বেশি টিম খুলতে পারবেন না।")
+
     await message.answer("📝 আপনার টিমের একটি নাম দিন:")
     await BotState.waiting_for_team_name.set()
 
