@@ -853,7 +853,16 @@ async def my_status_handler(message: types.Message):
         await message.answer(msg, parse_mode="Markdown")
     else:
         await message.answer("❌ আপনি বর্তমানে কোনো টিমে যুক্ত নেই।")
+        
+    # --- ফিরে যাওয়ার গ্লোবাল হ্যান্ডলার ---
+@dp.message_handler(lambda message: message.text in ["🔙 ফিরে যান", "⬅️ Back", "🔙 Back to Main Menu"], state="*")
+async def back_to_main_menu(message: types.Message, state: FSMContext):
+    # ইউজার কোনো কাজের মাঝপথে থাকলে সেই স্টেট ক্লিয়ার করে দেওয়া
+    await state.finish()
     
+    # মেইন মেনু দেখানো (নিশ্চিত করুন main_menu() ফাংশনটি আপনার কোডে আছে)
+    await message.answer("🏠 আপনি মেইন মেনুতে ফিরে এসেছেন। নিচের বাটন থেকে অপশন বেছে নিন:", reply_markup=main_menu())
+                            
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
