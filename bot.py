@@ -66,11 +66,7 @@ class BotState(StatesGroup):
     waiting_for_admin_msg = State()
     waiting_for_team_name = State()
     waiting_for_referrer_info = State() # এটি নতুন যোগ করুন
-    class BotState(StatesGroup):
-    # আপনার আগের সব স্টেট এখানে থাকবে...
-    waiting_for_team_name = State()   # টিমের নাম নেওয়ার জন্য
-    waiting_for_team_target = State() # ডেইলি টার্গেট নেওয়ার জন্য (এটি নতুন যোগ করুন)
-    # আপনার আগের সব স্টেট এখানে থাকবে...
+    #tem
     waiting_for_team_name = State()   # টিমের নাম নেওয়ার জন্য
     waiting_for_team_target = State() # ডেইলি টার্গেট নেওয়ার জন্য (এটি নতুন যোগ করুন)
     
