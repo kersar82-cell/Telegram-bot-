@@ -1,6 +1,8 @@
 import logging
 import sqlite3
-import os 
+import os
+import random
+import string
 from flask import Flask
 from threading import Thread
 from aiogram import Bot, Dispatcher, executor, types
@@ -18,6 +20,9 @@ app = Flask('')
 @app.route('/')
 def home(): return "Bot is Online!"
 def run(): app.run(host='0.0.0.0', port=8080)
+def generate_numeric_id():
+    # এটি ১১১,১১১ থেকে ৯৯,৯৯৯,৯৯৯ এর মধ্যে একটি বড় সংখ্যা তৈরি করবে
+    return str(random.randint(111111, 99999999))
 def keep_alive():
     t = Thread(target=run)
     t.start()
@@ -656,121 +661,137 @@ async def show_only_rules(message: types.Message):
             "⏰ আইডি সাবমিট লাস্ট টাইম: রাত ১০:০০ মিনিট।\n\n"
             "⏳ **রিপোর্ট টাইম: ৫ ঘণ্টা।**"
         )
-    # ==========================================
-# টিম ওয়ার্ক হ্যান্ডলার (শর্ত অনুযায়ী)
-# ==========================================
-
-# ১. টিম ওয়ার্ক মেইন মেনু: এখানে ক্লিক করলে 'Join Team' ও 'My Status' শো করবে
+    # --- ১. টিম ওয়ার্ক মেইন মেনু ---
 @dp.message_handler(lambda message: message.text == "👥 Team Work")
 async def team_work_home(message: types.Message):
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.row("🤝 Join Team", "📊 My Status")
-    keyboard.row("🔄 রিফ্রেশ")
-    
-    text = (
-        "👥 **টিম ওয়ার্ক প্যানেলে আপনাকে স্বাগতম।**\n\n"
-        "এখানে আপনি নিজের টিম তৈরি করতে পারেন অথবা অন্য টিমে যোগ দিয়ে কাজ করতে পারেন।"
-    )
-    await message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
+    keyboard.row("🔙 মেইন মেনু")
+    await message.answer("👥 **টিম ওয়ার্ক প্যানেলে আপনাকে স্বাগতম।**", reply_markup=keyboard, parse_mode="Markdown")
 
-# ২. জয়েন টিম অপশন: এখানে ক্লিক করলে 'Create Team' ও 'Join Existing Team' শো করবে
+# --- ২. জয়েন টিম অপশন (শর্ত অনুযায়ী) ---
 @dp.message_handler(lambda message: message.text == "🤝 Join Team")
 async def join_team_options_handler(message: types.Message):
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.row("🏗️ Create Team", "🔗 Join Existing Team")
     keyboard.row("🔙 ফিরে যান")
-    
-    await message.answer("নিচের যেকোনো একটি অপশন বেছে নিন:", reply_markup=keyboard)
+    await message.answer("নিচের অপশন থেকে একটি বেছে নিন:", reply_markup=keyboard)
 
-# ৩. ক্রিয়েট টিম: প্রথমে টিমের নাম চাইবে
+# --- ৩. ক্রিয়েট টিম লজিক (র্যান্ডম আইডি সহ) ---
 @dp.message_handler(lambda message: message.text == "🏗️ Create Team")
 async def start_team_creation(message: types.Message):
-    await message.answer("📝 আপনার টিমের নাম কি হবে?")
+    await message.answer("📝 আপনার টিমের একটি নাম দিন:")
     await BotState.waiting_for_team_name.set()
 
-# ৪. ডেইলি টার্গেট চাওয়া (টিমের নাম পাওয়ার পর)
 @dp.message_handler(state=BotState.waiting_for_team_name)
 async def get_team_target(message: types.Message, state: FSMContext):
     await state.update_data(t_name=message.text)
-    await message.answer("🎯 আপনি বা আপনার টিম ডেইলি কতগুলো আইডি জমা দিতে পারবেন? (শুধু সংখ্যা লিখুন)")
+    await message.answer("🎯 প্রতিদিন কতগুলো আইডি জমা দিতে পারবেন? (সংখ্যা লিখুন)")
     await BotState.waiting_for_team_target.set()
 
-# ৫. টিম তৈরি সম্পন্ন করা এবং ডাটাবেসে সেভ করা
 @dp.message_handler(state=BotState.waiting_for_team_target)
 async def finalize_team(message: types.Message, state: FSMContext):
     try:
         target = int(message.text)
         data = await state.get_data()
         t_name = data.get('t_name')
-        l_id = message.from_user.id
         
-        # ডাটাবেসে নতুন টিম ইনসার্ট (অটোমেটিক আইডি তৈরি হবে)
-        cursor.execute("INSERT INTO teams (team_name, leader_id, daily_target) VALUES (?, ?, ?)", 
-                       (t_name, l_id, target))
-        db.commit()
-        t_id = cursor.lastrowid # তৈরি হওয়া টিমের আইডি
+        # র্যান্ডম ইউনিক আইডি তৈরি
+        unique_id = generate_numeric_id()
         
-        # লিডারকে মেম্বার হিসেবে টিমে যোগ করা
-        cursor.execute("INSERT OR REPLACE INTO team_members (user_id, team_id) VALUES (?, ?)", (l_id, t_id))
+        # ডাটাবেসে সেভ
+        cursor.execute("INSERT INTO teams (team_id, team_name, leader_id, daily_target) VALUES (?, ?, ?, ?)", 
+                       (unique_id, t_name, message.from_user.id, target))
         db.commit()
         
-        await message.answer(f"✅ **টিম সফলভাবে তৈরি হয়েছে!**\n\n📛 নাম: {t_name}\n🎯 ডেইলি লক্ষ্য: {target}\n🆔 টিম আইডি: `{t_id}`", reply_markup=main_menu(), parse_mode="Markdown")
+        # লিডারকে মেম্বার হিসেবে অ্যাড করা
+        cursor.execute("INSERT OR REPLACE INTO team_members (user_id, team_id) VALUES (?, ?)", 
+                       (message.from_user.id, unique_id))
+        db.commit()
+        
+        await message.answer(f"✅ **টিম তৈরি হয়েছে!**\n\n📛 নাম: {t_name}\n🎯 লক্ষ্য: {target}\n🆔 ইউনিক টিম আইডি: `{unique_id}`", reply_markup=main_menu(), parse_mode="Markdown")
         await state.finish()
     except ValueError:
-        await message.answer("❌ ভুল ইনপুট! টার্গেট অবশ্যই সংখ্যায় (যেমন: ৫০) লিখতে হবে।")
+        await message.answer("❌ ভুল! টার্গেট অবশ্যই সংখ্যায় লিখুন।")
 
-# ৬. সচল টিমের লিস্ট এবং আইডি দেখানো
+# --- ৪. সচল টিম লিস্ট দেখা ---
 @dp.message_handler(lambda message: message.text == "🔗 Join Existing Team")
 async def show_all_teams_handler(message: types.Message):
     cursor.execute("SELECT team_id, team_name FROM teams")
-    all_teams = cursor.fetchall()
+    teams = cursor.fetchall()
+    if not teams: return await message.answer("কোনো টিম নেই।")
     
-    if not all_teams:
-        return await message.answer("বর্তমানে কোনো টিম তৈরি করা নেই।")
-    
-    list_text = "📍 **বর্তমানে সচল সকল টিমের আইডি:**\n\n"
-    for team in all_teams:
-        list_text += f"🔹 {team[1]} — আইডি: `{team[0]}`\n"
-    
-    list_text += "\n🤝 টিমে জয়েন করতে এইভাবে লিখুন: `/join আইডি`"
-    await message.answer(list_text, parse_mode="Markdown")
+    txt = "📍 **সচল টিমের আইডিগুলো:**\n\n"
+    for t in teams:
+        txt += f"🔹 {t[1]} — আইডি: `{t[0]}`\n"
+    txt += "\n🤝 জয়েন করতে লিখুন: `/join আইডি`"
+    await message.answer(txt, parse_mode="Markdown")
+# --- ১. টিম ওয়ার্ক মেইন মেনু ---
+@dp.message_handler(lambda message: message.text == "👥 Team Work")
+async def team_work_home(message: types.Message):
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.row("🤝 Join Team", "📊 My Status")
+    keyboard.row("🔙 মেইন মেনু")
+    await message.answer("👥 **টিম ওয়ার্ক প্যানেলে আপনাকে স্বাগতম।**", reply_markup=keyboard, parse_mode="Markdown")
 
-# ৭. আইডি দিয়ে টিমে জয়েন হওয়া
-@dp.message_handler(commands=['join'])
-async def join_team_by_id(message: types.Message):
-    t_id = message.get_args()
-    if not t_id:
-        return await message.answer("⚠️ সঠিক নিয়ম: `/join ১২৩` (এখানে ১২৩ হলো টিমের আইডি)")
-    
-    cursor.execute("SELECT team_name FROM teams WHERE team_id=?", (t_id,))
-    team = cursor.fetchone()
-    
-    if team:
-        cursor.execute("INSERT OR REPLACE INTO team_members (user_id, team_id) VALUES (?, ?)", (message.from_user.id, t_id))
-        db.commit()
-        await message.answer(f"✅ অভিনন্দন! আপনি **{team[0]}** টিমে সফলভাবে যোগ দিয়েছেন।")
-    else:
-        await message.answer("❌ এই আইডি দিয়ে কোনো টিম পাওয়া যায়নি।")
+# --- ২. জয়েন টিম অপশন (শর্ত অনুযায়ী) ---
+@dp.message_handler(lambda message: message.text == "🤝 Join Team")
+async def join_team_options_handler(message: types.Message):
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.row("🏗️ Create Team", "🔗 Join Existing Team")
+    keyboard.row("🔙 ফিরে যান")
+    await message.answer("নিচের অপশন থেকে একটি বেছে নিন:", reply_markup=keyboard)
 
-# ৮. মাই স্ট্যাটাস (টিমের তথ্য দেখা)
-@dp.message_handler(lambda message: message.text == "📊 My Status")
-async def my_team_status(message: types.Message):
-    cursor.execute("SELECT team_id FROM team_members WHERE user_id=?", (message.from_user.id,))
-    res = cursor.fetchone()
-    
-    if res:
-        t_id = res[0]
-        cursor.execute("SELECT team_name, daily_target FROM teams WHERE team_id=?", (t_id,))
-        t_info = cursor.fetchone()
-        await message.answer(f"📊 **আপনার টিমের তথ্য**\n\n👥 নাম: {t_info[0]}\n🆔 আইডি: `{t_id}`\n🎯 ডেইলি টার্গেট: {t_info[1]} টি")
-    else:
-        await message.answer("❌ আপনি বর্তমানে কোনো টিমে যুক্ত নেই।")
+# --- ৩. ক্রিয়েট টিম লজিক (র্যান্ডম আইডি সহ) ---
+@dp.message_handler(lambda message: message.text == "🏗️ Create Team")
+async def start_team_creation(message: types.Message):
+    await message.answer("📝 আপনার টিমের একটি নাম দিন:")
+    await BotState.waiting_for_team_name.set()
 
-# ৯. ফিরে যাওয়ার লজিক
-@dp.message_handler(lambda message: message.text == "🔙 ফিরে যান")
-async def back_to_team_main(message: types.Message):
-    await team_work_home(message)
+@dp.message_handler(state=BotState.waiting_for_team_name)
+async def get_team_target(message: types.Message, state: FSMContext):
+    await state.update_data(t_name=message.text)
+    await message.answer("🎯 প্রতিদিন কতগুলো আইডি জমা দিতে পারবেন? (সংখ্যা লিখুন)")
+    await BotState.waiting_for_team_target.set()
+
+@dp.message_handler(state=BotState.waiting_for_team_target)
+async def finalize_team(message: types.Message, state: FSMContext):
+    try:
+        target = int(message.text)
+        data = await state.get_data()
+        t_name = data.get('t_name')
         
+        # র্যান্ডম ইউনিক আইডি তৈরি
+        unique_id = generate_numeric_id()
+        
+        # ডাটাবেসে সেভ
+        cursor.execute("INSERT INTO teams (team_id, team_name, leader_id, daily_target) VALUES (?, ?, ?, ?)", 
+                       (unique_id, t_name, message.from_user.id, target))
+        db.commit()
+        
+        # লিডারকে মেম্বার হিসেবে অ্যাড করা
+        cursor.execute("INSERT OR REPLACE INTO team_members (user_id, team_id) VALUES (?, ?)", 
+                       (message.from_user.id, unique_id))
+        db.commit()
+        
+        await message.answer(f"✅ **টিম তৈরি হয়েছে!**\n\n📛 নাম: {t_name}\n🎯 লক্ষ্য: {target}\n🆔 ইউনিক টিম আইডি: `{unique_id}`", reply_markup=main_menu(), parse_mode="Markdown")
+        await state.finish()
+    except ValueError:
+        await message.answer("❌ ভুল! টার্গেট অবশ্যই সংখ্যায় লিখুন।")
+
+# --- ৪. সচল টিম লিস্ট দেখা ---
+@dp.message_handler(lambda message: message.text == "🔗 Join Existing Team")
+async def show_all_teams_handler(message: types.Message):
+    cursor.execute("SELECT team_id, team_name FROM teams")
+    teams = cursor.fetchall()
+    if not teams: return await message.answer("কোনো টিম নেই।")
+    
+    txt = "📍 **সচল টিমের আইডিগুলো:**\n\n"
+    for t in teams:
+        txt += f"🔹 {t[1]} — আইডি: `{t[0]}`\n"
+    txt += "\n🤝 জয়েন করতে লিখুন: `/join আইডি`"
+    await message.answer(txt, parse_mode="Markdown")
+    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
