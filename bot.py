@@ -115,40 +115,47 @@ async def start(message: types.Message, state: FSMContext):
     # ৪. মেইন মেনু দেখানো
     await message.answer("✅Instagram 2fa &\n Mother ACCOUNT ↓↓\n 🔥Work Start\n\n🟢 Instagram cookies &\n FB 00 Fnd 2fa↓↓\n🔥WorkStart v2", reply_markup=main_menu())
     
-# =========================================
-@dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa"])
-async def ask_work_type(message: types.Message, state: FSMContext):
-    # এই লাইনগুলো বাম দিক থেকে ৪টি স্পেস ডানে থাকবে
-    await state.update_data(category=message.text)
-    
-    inline_kb = types.InlineKeyboardMarkup()
-    inline_kb.add(types.InlineKeyboardButton("🗃️ File", callback_data="type_file"))
-    inline_kb.add(types.InlineKeyboardButton("👤 Single ID", callback_data="type_single"))
-    await message.answer("✅ আপনার কাজের ধরণ বেছে নিন:", reply_markup=inline_kb)
+# ১. আগে 'Work start 🔥' হ্যান্ডলারটি দিন
 @dp.message_handler(lambda message: message.text == "Work start 🔥")
 async def work_start(message: types.Message):
+    # ইউজার ব্লক কি না চেক করা
     if await is_blocked(message.from_user.id):
-        return await message.answer("❌ দুঃখিত, আপনি ব্লকড! আপনি আর কাজ জমা দিতে পারবেন না। /nএডমিনের সাথে কথা বলুন 👍")
+        return await message.answer("❌ দুঃখিত, আপনি ব্লকড!\nএডমিনের সাথে কথা বলুন 👍")
     
+    # নতুন কিবোর্ড তৈরি (ক্যাটাগরি সিলেক্ট করার জন্য)
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add("IG Mother Account", "IG 2fa")
-    keyboard.add("🔄 রিফ্রেশ") 
+    # বাটনগুলো এক সারিতে বা আলাদা সারিতে সুন্দর করে সাজান
+    keyboard.row("IG Mother Account", "IG 2fa")
+    keyboard.row("🔄 রিফ্রেশ") 
     
     msg = """Nord VPN 🫱
-    🤩Mail: * 3tx0zztil1@xkxkud.com *
-    Pass: * RJR83@RdFr2@ *
+    🤩Mail: `3tx0zztil1@xkxkud.com`
+    Pass: `RJR83@RdFr2@`
 
-    🤩Mail: * 377guy1zb4@dollicons.com *
-    Pass: * RJR83@RdFr2@ *
+    🤩Mail: `377guy1zb4@dollicons.com`
+    Pass: `RJR83@RdFr2@`
 
-    🤩Mail: * icufc65r6j@dollicons.com *
-    Pass: * RJR83@RdFr2@ *
+    🤩Mail: `icufc65r6j@dollicons.com`
+    Pass: `RJR83@RdFr2@`
     
     👍 যেকোনো সমস্যায়: @Dinanhaji !
     🔴 আপনার কাজের ক্যাটাগরি বেছে নিন:"""
-    await message.answer(msg, reply_markup=keyboard)
     
+    # parse_mode="Markdown" যোগ করলে ইমেইল-পাসওয়ার্ডে ক্লিক করলে অটো কপি হবে (ব্যাকটিক ব্যবহারের কারণে)
+    await message.answer(msg, reply_markup=keyboard, parse_mode="Markdown")
 
+# ২. এরপর ক্যাটাগরি হ্যান্ডলারটি দিন
+@dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa"])
+async def ask_work_type(message: types.Message, state: FSMContext):
+    await state.update_data(category=message.text)
+    
+    inline_kb = types.InlineKeyboardMarkup(row_width=2)
+    inline_kb.add(
+        types.InlineKeyboardButton("🗃️ File", callback_data="type_file"),
+        types.InlineKeyboardButton("👤 Single ID", callback_data="type_single")
+    )
+    await message.answer(f"✅ আপনি **{message.text}** বেছে নিয়েছেন।\nআপনার কাজের ধরণ বেছে নিন:", reply_markup=inline_kb, parse_mode="Markdown")
+    
 # --- ইনলাইন বাটনের প্রসেসিং (File vs Single ID) ---
 @dp.callback_query_handler(lambda c: c.data.startswith('type_'), state="*")
 async def process_callback_work_type(callback_query: types.CallbackQuery):
