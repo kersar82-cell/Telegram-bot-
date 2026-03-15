@@ -70,8 +70,7 @@ class BotState(StatesGroup):
     waiting_for_target_id = State()
     waiting_for_admin_msg = State()
     waiting_for_team_name = State()
-    waiting_for_referrer_info = State() # এটি নতুন যোগ করুন
-    #tem
+    waiting_for_referrer_info = State() # এটি নতুন যোগ করু
     waiting_for_team_name = State()   # টিমের নাম নেওয়ার জন্য
     waiting_for_team_target = State() # ডেইলি টার্গেট নেওয়ার জন্য (এটি নতুন যোগ করুন)
     
@@ -115,16 +114,17 @@ async def start(message: types.Message, state: FSMContext):
     # ৪. মেইন মেনু দেখানো
     await message.answer("✅Instagram 2fa &\n Mother ACCOUNT ↓↓\n 🔥Work Start\n\n🟢 Instagram cookies &\n FB 00 Fnd 2fa↓↓\n🔥WorkStart v2", reply_markup=main_menu())
     
-# ১. আগে 'Work start 🔥' হ্যান্ডলারটি দিন
-@dp.message_handler(lambda message: message.text == "Work start 🔥")
-async def work_start(message: types.Message):
-    # ইউজার ব্লক কি না চেক করা
-    if await is_blocked(message.from_user.id):
+# ১. মেইন ওয়ার্ক স্টার্ট হ্যান্ডলার
+@dp.message_handler(lambda message: message.text == "Work start 🔥", state="*")
+async def work_start(message: types.Message, state: FSMContext):
+    await state.finish() # সব স্টেট ক্লিয়ার করে কাজ শুরু করা
+    
+    # ইউজার ব্লক কি না চেক
+    cursor.execute("SELECT user_id FROM blacklist WHERE user_id=?", (message.from_user.id,))
+    if cursor.fetchone():
         return await message.answer("❌ দুঃখিত, আপনি ব্লকড!\nএডমিনের সাথে কথা বলুন 👍")
     
-    # নতুন কিবোর্ড তৈরি (ক্যাটাগরি সিলেক্ট করার জন্য)
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    # বাটনগুলো এক সারিতে বা আলাদা সারিতে সুন্দর করে সাজান
     keyboard.row("IG Mother Account", "IG 2fa")
     keyboard.row("🔄 রিফ্রেশ") 
     
@@ -141,11 +141,10 @@ async def work_start(message: types.Message):
     👍 যেকোনো সমস্যায়: @Dinanhaji !
     🔴 আপনার কাজের ক্যাটাগরি বেছে নিন:"""
     
-    # parse_mode="Markdown" যোগ করলে ইমেইল-পাসওয়ার্ডে ক্লিক করলে অটো কপি হবে (ব্যাকটিক ব্যবহারের কারণে)
     await message.answer(msg, reply_markup=keyboard, parse_mode="Markdown")
 
-# ২. এরপর ক্যাটাগরি হ্যান্ডলারটি দিন
-@dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa"])
+# ২. ক্যাটাগরি সিলেক্ট করার হ্যান্ডলার (এটি আগেরটির ঠিক নিচে থাকবে)
+@dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa"], state="*")
 async def ask_work_type(message: types.Message, state: FSMContext):
     await state.update_data(category=message.text)
     
