@@ -823,10 +823,53 @@ async def my_status_handler(message: types.Message, state: FSMContext):
             f"💰 **টিমের মোট ইনকাম: {total_money:.2f} ৳**\n"
             f"⚠️ (এই অংশটি শুধু আপনি লিডার হিসেবে দেখতে পাচ্ছেন)\n"
         )
-    
+        # ৮৫৬ নম্বর লাইনের ঠিক উপরে এটি দিন
+    markup = None
+    if user_id == leader_id:
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("👥 View Team Members", callback_data=f"show_members_{t_id}"))
     msg += "━━━━━━━━━━━━━━━━━━"
     await message.answer(msg, parse_mode="Markdown")
-  
+  # --- সরাসরি Team UID দিয়ে জয়েন করার কমান্ড ---
+@dp.message_handler(commands=['jointeam'])
+async def join_team_by_uid(message: types.Message):
+    user_id = message.from_user.id
+    args = message.get_args().split() # কমান্ডের পরের UID টি নেওয়া হচ্ছে
+
+    # আইডি দেওয়া হয়েছে কি না চেক করা
+    if not args:
+        return await message.answer("⚠️ সঠিক নিয়ম: `/jointeam TEAM_UID`", parse_mode="Markdown")
+
+    team_uid_input = args[0]
+
+    # ১. চেক করা যে এই Team UID টি ডাটাবেসে আছে কি না
+    # আপনার টেবিলে কলামের নাম 'team_id' (যেখানে রেন্ডম আইডি সেভ হয়)
+    cursor.execute("SELECT team_id, team_name, leader_id FROM teams WHERE team_id = ?", (team_uid_input,))
+    team = cursor.fetchone()
+
+    if team:
+        t_uid, team_name, leader_id = team
+        
+        # ২. লিডার নিজে নিজের টিমে জয়েন করতে চাচ্ছে কি না চেক
+        if user_id == leader_id:
+            return await message.answer("❌ আপনি এই টিমের লিডার, মেম্বার হিসেবে জয়েন করতে পারবেন না!")
+
+        try:
+            # ৩. ডাটাবেসে মেম্বার হিসেবে সেভ করা (Auto-Save)
+            cursor.execute("INSERT OR IGNORE INTO team_members (user_id, team_id) VALUES (?, ?)", (user_id, t_uid))
+            
+            # ৪. ইউজারকে সাধারণ ইউজার তালিকায় নিশ্চিত করা
+            cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+            
+            db.commit()
+
+            await message.answer(f"✅ সফলভাবে **{team_name}** টিমে জয়েন করেছেন!\n\nএখন থেকে আপনার কাজের রিপোর্ট এই টিমে জমা হবে।")
+            
+        except Exception as e:
+            await message.answer(f"❌ ডাটাবেস এরর: {e}")
+    else:
+        await message.answer("❌ এই Team UID দিয়ে কোনো টিম পাওয়া যায়নি। সঠিক আইডি দিন।")
+    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
