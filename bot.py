@@ -57,7 +57,7 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS teams
 cursor.execute('''CREATE TABLE IF NOT EXISTS team_members 
                   (user_id INTEGER PRIMARY KEY, team_id INTEGER)''')
 db.commit()
-# এটি জয়েন করার লজিকের ভেতরে যেখানে ডাটাবেস এন্ট্রি হয় সেখানে দিন
+# --- এই অংশটুকু আপনার কোড থেকে মুছে ফেলুন (লাইন ৬০-৬২) ---
 cursor.execute("INSERT OR IGNORE INTO team_members (user_id, team_id) VALUES (?, ?)", (user_id, team_id))
 cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
 db.commit()
