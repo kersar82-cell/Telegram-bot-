@@ -825,24 +825,25 @@ async def my_status_handler(message: types.Message, state: FSMContext):
     msg += "━━━━━━━━━━━━━━━━━━"
     await message.answer(msg, parse_mode="Markdown")
 
- # --- টিম লিডার আইডি পরিবর্তন করার অ্যাডমিন কমান্ড ---
+# --- টিম লিডার আইডি পরিবর্তন করার আপডেট কোড ---
 @dp.message_handler(commands=['change_leader_id'])
 async def change_leader_id_handler(message: types.Message):
-    # আপনার অ্যাডমিন আইডি এখানে দিন (যেমন: 123456789)
-    ADMIN_ID = 123456789  # <--- আপনার আইডিটি এখানে অবশ্যই বসান
+    # আপনার অ্যাডমিন আইডি এখানে দিন
+    MY_ADMIN_ID = 123456789  # <--- আপনার নিজের আইডি দিন
 
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id != MY_ADMIN_ID:
         return
 
     args = message.get_args().split()
     
     if len(args) < 2:
-        await message.answer("❌ **সঠিক নিয়ম:**\n`/change_leader_id পুরাতন_আইডি নতুন_আইডি`", parse_mode="Markdown")
-        return
+        return await message.answer("❌ **সঠিক নিয়ম:**\n`/change_leader_id পুরাতন_আইডি নতুন_আইডি`", parse_mode="Markdown")
 
-    old_id, new_id = args[0], args[1]
-    
     try:
+        # আইডিগুলোকে সংখ্যায় (Integer) রূপান্তর করা হচ্ছে
+        old_id = int(args[0])
+        new_id = int(args[1])
+        
         # ১. teams টেবিলে লিডার আইডি আপডেট
         cursor.execute("UPDATE teams SET leader_id = ? WHERE leader_id = ?", (new_id, old_id))
         
@@ -855,17 +856,23 @@ async def change_leader_id_handler(message: types.Message):
         # ৪. users টেবিলে ব্যালেন্স ও অন্যান্য ডাটা আপডেট
         cursor.execute("UPDATE users SET user_id = ? WHERE user_id = ?", (new_id, old_id))
         
-        # ৫. blacklist টেবিলে আইডি আপডেট (যদি থাকে)
+        # ৫. blacklist টেবিলে আইডি আপডেট
         cursor.execute("UPDATE blacklist SET user_id = ? WHERE user_id = ?", (new_id, old_id))
 
-        # আপনার ভেরিয়েবল 'Db' তাই এখানে Db.commit() হবে
+        # আপনার ডাটাবেস কানেকশন Db বড় হাতের, তাই Db.commit()
         Db.commit() 
         
-        await message.answer(f"✅ **আইডি সফলভাবে আপডেট হয়েছে!**\n\nপুরাতন আইডি: `{old_id}`\nনতুন আইডি: `{new_id}`", parse_mode="Markdown")
-        
+        # কতগুলো রো (Row) আপডেট হয়েছে তা চেক করা
+        if cursor.rowcount > 0:
+            await message.answer(f"✅ **আইডি সফলভাবে আপডেট হয়েছে!**\n\nপুরাতন: `{old_id}`\nনতুন: `{new_id}`", parse_mode="Markdown")
+        else:
+            await message.answer(f"⚠️ ডাটাবেসে `{old_id}` আইডিটি খুঁজে পাওয়া যায়নি। আইডি সঠিক আছে কি না চেক করুন।")
+            
+    except ValueError:
+        await message.answer("❌ আইডি অবশ্যই শুধু সংখ্যা হতে হবে!")
     except Exception as e:
         await message.answer(f"❌ ডাটাবেস এরর: {str(e)}")
-        
+    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
