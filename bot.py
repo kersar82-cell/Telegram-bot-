@@ -826,29 +826,46 @@ async def my_status_handler(message: types.Message, state: FSMContext):
     await message.answer(msg, parse_mode="Markdown")
 
  # --- টিম লিডার আইডি পরিবর্তন করার অ্যাডমিন কমান্ড ---
-# নিয়ম: /change_leader_id [পুরাতন_লিডার_আইডি] [নতুন_লিডার_আইডি]
-@dp.message_handler(commands=['change_leader_id'], user_id=ADMIN_ID)
+@dp.message_handler(commands=['change_leader_id'])
 async def change_leader_id_handler(message: types.Message):
+    # আপনার অ্যাডমিন আইডি এখানে দিন (যেমন: 123456789)
+    ADMIN_ID = 123456789  # <--- আপনার আইডিটি এখানে অবশ্যই বসান
+
+    if message.from_user.id != ADMIN_ID:
+        return
+
     args = message.get_args().split()
     
     if len(args) < 2:
-        return await message.answer("❌ **সঠিক নিয়ম:**\n`/change_leader_id 111 222`\n(এখানে ১১১ পুরাতন আইডি এবং ২২২ নতুন আইডি)", parse_mode="Markdown")
-    
+        await message.answer("❌ **সঠিক নিয়ম:**\n`/change_leader_id পুরাতন_আইডি নতুন_আইডি`", parse_mode="Markdown")
+        return
+
     old_id, new_id = args[0], args[1]
     
-    # teams টেবিলে লিডার আইডি আপডেট করা
-    cursor.execute("UPDATE teams SET leader_id = ? WHERE leader_id = ?", (new_id, old_id))
-    
-    # team_members টেবিলে ওই ব্যক্তির আইডি আপডেট করা (যাতে সে টিমে থাকতে পারে)
-    cursor.execute("UPDATE team_members SET user_id = ? WHERE user_id = ?", (new_id, old_id))
-    
-    # stats টেবিলে তার কাজের রেকর্ডগুলো নতুন আইডিতে ট্রান্সফার করা
-    cursor.execute("UPDATE stats SET user_id = ? WHERE user_id = ?", (new_id, old_id))
-    
-    db.commit()
-    
-    await message.answer(f"✅ **লিডার আইডি সফলভাবে আপডেট হয়েছে!**\n\nপুরাতন আইডি: `{old_id}`\nনতুন আইডি: `{new_id}`\n\nএখন থেকে এই লিডারের সব রেকর্ড নতুন আইডিতে দেখাবে।")
-    
+    try:
+        # ১. teams টেবিলে লিডার আইডি আপডেট
+        cursor.execute("UPDATE teams SET leader_id = ? WHERE leader_id = ?", (new_id, old_id))
+        
+        # ২. team_members টেবিলে মেম্বার আইডি আপডেট
+        cursor.execute("UPDATE team_members SET user_id = ? WHERE user_id = ?", (new_id, old_id))
+        
+        # ৩. stats টেবিলে কাজের রেকর্ড আপডেট
+        cursor.execute("UPDATE stats SET user_id = ? WHERE user_id = ?", (new_id, old_id))
+        
+        # ৪. users টেবিলে ব্যালেন্স ও অন্যান্য ডাটা আপডেট
+        cursor.execute("UPDATE users SET user_id = ? WHERE user_id = ?", (new_id, old_id))
+        
+        # ৫. blacklist টেবিলে আইডি আপডেট (যদি থাকে)
+        cursor.execute("UPDATE blacklist SET user_id = ? WHERE user_id = ?", (new_id, old_id))
+
+        # আপনার ভেরিয়েবল 'Db' তাই এখানে Db.commit() হবে
+        Db.commit() 
+        
+        await message.answer(f"✅ **আইডি সফলভাবে আপডেট হয়েছে!**\n\nপুরাতন আইডি: `{old_id}`\nনতুন আইডি: `{new_id}`", parse_mode="Markdown")
+        
+    except Exception as e:
+        await message.answer(f"❌ ডাটাবেস এরর: {str(e)}")
+        
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
