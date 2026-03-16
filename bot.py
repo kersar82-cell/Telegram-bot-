@@ -675,7 +675,15 @@ async def show_only_rules(message: types.Message):
     if msg:
         await message.answer(msg, parse_mode="Markdown")
                     
-
+    # --- ফিরে যাওয়ার গ্লোবাল হ্যান্ডলার ---
+@dp.message_handler(lambda message: message.text in ["🔙 ফিরে যান", "⬅️ Back", "🔙 Back to Main Menu"], state="*")
+async def back_to_main_menu(message: types.Message, state: FSMContext):
+    # ইউজার কোনো কাজের মাঝপথে থাকলে সেই স্টেট ক্লিয়ার করে দেওয়া
+    await state.finish()
+    
+    # মেইন মেনু দেখানো (নিশ্চিত করুন main_menu() ফাংশনটি আপনার কোডে আছে)
+    await message.answer("🏠 আপনি মেইন মেনুতে ফিরে এসেছেন। নিচের বাটন থেকে অপশন বেছে নিন:", reply_markup=main_menu())
+                           
 # --- ১. টিম ওয়ার্ক মেইন মেনু ---
 @dp.message_handler(lambda message: message.text == "👥 Team Work")
 async def team_work_home(message: types.Message):
@@ -817,15 +825,30 @@ async def my_status_handler(message: types.Message, state: FSMContext):
     msg += "━━━━━━━━━━━━━━━━━━"
     await message.answer(msg, parse_mode="Markdown")
 
-    # --- ফিরে যাওয়ার গ্লোবাল হ্যান্ডলার ---
-@dp.message_handler(lambda message: message.text in ["🔙 ফিরে যান", "⬅️ Back", "🔙 Back to Main Menu"], state="*")
-async def back_to_main_menu(message: types.Message, state: FSMContext):
-    # ইউজার কোনো কাজের মাঝপথে থাকলে সেই স্টেট ক্লিয়ার করে দেওয়া
-    await state.finish()
+ # --- টিম লিডার আইডি পরিবর্তন করার অ্যাডমিন কমান্ড ---
+# নিয়ম: /change_leader_id [পুরাতন_লিডার_আইডি] [নতুন_লিডার_আইডি]
+@dp.message_handler(commands=['change_leader_id'], user_id=ADMIN_ID)
+async def change_leader_id_handler(message: types.Message):
+    args = message.get_args().split()
     
-    # মেইন মেনু দেখানো (নিশ্চিত করুন main_menu() ফাংশনটি আপনার কোডে আছে)
-    await message.answer("🏠 আপনি মেইন মেনুতে ফিরে এসেছেন। নিচের বাটন থেকে অপশন বেছে নিন:", reply_markup=main_menu())
-                            
+    if len(args) < 2:
+        return await message.answer("❌ **সঠিক নিয়ম:**\n`/change_leader_id 111 222`\n(এখানে ১১১ পুরাতন আইডি এবং ২২২ নতুন আইডি)", parse_mode="Markdown")
+    
+    old_id, new_id = args[0], args[1]
+    
+    # teams টেবিলে লিডার আইডি আপডেট করা
+    cursor.execute("UPDATE teams SET leader_id = ? WHERE leader_id = ?", (new_id, old_id))
+    
+    # team_members টেবিলে ওই ব্যক্তির আইডি আপডেট করা (যাতে সে টিমে থাকতে পারে)
+    cursor.execute("UPDATE team_members SET user_id = ? WHERE user_id = ?", (new_id, old_id))
+    
+    # stats টেবিলে তার কাজের রেকর্ডগুলো নতুন আইডিতে ট্রান্সফার করা
+    cursor.execute("UPDATE stats SET user_id = ? WHERE user_id = ?", (new_id, old_id))
+    
+    db.commit()
+    
+    await message.answer(f"✅ **লিডার আইডি সফলভাবে আপডেট হয়েছে!**\n\nপুরাতন আইডি: `{old_id}`\nনতুন আইডি: `{new_id}`\n\nএখন থেকে এই লিডারের সব রেকর্ড নতুন আইডিতে দেখাবে।")
+    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
