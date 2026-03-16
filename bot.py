@@ -700,24 +700,25 @@ async def join_team_options_handler(message: types.Message):
     keyboard.row("🔙 ফিরে যান")
     await message.answer("নিচের অপশন থেকে একটি বেছে নিন:", reply_markup=keyboard)
 
-# --- ৩. ক্রিয়েট টিম লজিক (লিমিট সহ) ---
+# --- ৩. ক্রিয়েট টিম লজিক (অ্যাডমিন আনলিমিটেড, ইউজার লিমিটেড) ---
 @dp.message_handler(lambda message: message.text == "🏗️ Create Team")
 async def start_team_creation(message: types.Message):
     user_id = message.from_user.id
     
-    # এডমিন কি না চেক করা (এডমিনের জন্য কোনো লিমিট নেই)
+    # অ্যাডমিন কি না চেক করা (ADMIN_ID আপনার ফাইলের ১৫ নম্বর লাইন থেকে আসছে)
     if user_id != ADMIN_ID:
-        # ডাটাবেসে চেক করা এই ইউজার ইতিমধ্যে কয়টি টিমের লিডার
+        # সাধারণ ইউজার হলে ডাটাবেসে চেক করা সে ইতিমধ্যে কয়টি টিমের লিডার
         cursor.execute("SELECT COUNT(*) FROM teams WHERE leader_id=?", (user_id,))
         team_count = cursor.fetchone()[0]
         
-        # এখানে ১ এর জায়গায় আপনি যত ইচ্ছা লিমিট দিতে পারেন
+        # যদি ইউজার অলরেডি ১টি টিমের লিডার হয়ে থাকে
         if team_count >= 1:
             return await message.answer("❌ আপনি ইতিমধ্যে একটি টিম খুলেছেন। একজন ইউজার একটির বেশি টিম খুলতে পারবেন না।")
 
+    # অ্যাডমিন হলে সরাসরি এখানে চলে আসবে অথবা ইউজার নতুন হলে নাম চাইবে
     await message.answer("📝 আপনার টিমের একটি নাম দিন:")
     await BotState.waiting_for_team_name.set()
-
+    
 @dp.message_handler(state=BotState.waiting_for_team_name)
 async def get_team_target(message: types.Message, state: FSMContext):
     await state.update_data(t_name=message.text)
@@ -824,55 +825,7 @@ async def my_status_handler(message: types.Message, state: FSMContext):
     
     msg += "━━━━━━━━━━━━━━━━━━"
     await message.answer(msg, parse_mode="Markdown")
-
-# --- টিম লিডার আইডি পরিবর্তন করার আপডেট কোড ---
-@dp.message_handler(commands=['change_leader_id'])
-async def change_leader_id_handler(message: types.Message):
-    # আপনার অ্যাডমিন আইডি এখানে দিন
-    MY_ADMIN_ID = 123456789  # <--- আপনার নিজের আইডি দিন
-
-    if message.from_user.id != MY_ADMIN_ID:
-        return
-
-    args = message.get_args().split()
-    
-    if len(args) < 2:
-        return await message.answer("❌ **সঠিক নিয়ম:**\n`/change_leader_id পুরাতন_আইডি নতুন_আইডি`", parse_mode="Markdown")
-
-    try:
-        # আইডিগুলোকে সংখ্যায় (Integer) রূপান্তর করা হচ্ছে
-        old_id = int(args[0])
-        new_id = int(args[1])
-        
-        # ১. teams টেবিলে লিডার আইডি আপডেট
-        cursor.execute("UPDATE teams SET leader_id = ? WHERE leader_id = ?", (new_id, old_id))
-        
-        # ২. team_members টেবিলে মেম্বার আইডি আপডেট
-        cursor.execute("UPDATE team_members SET user_id = ? WHERE user_id = ?", (new_id, old_id))
-        
-        # ৩. stats টেবিলে কাজের রেকর্ড আপডেট
-        cursor.execute("UPDATE stats SET user_id = ? WHERE user_id = ?", (new_id, old_id))
-        
-        # ৪. users টেবিলে ব্যালেন্স ও অন্যান্য ডাটা আপডেট
-        cursor.execute("UPDATE users SET user_id = ? WHERE user_id = ?", (new_id, old_id))
-        
-        # ৫. blacklist টেবিলে আইডি আপডেট
-        cursor.execute("UPDATE blacklist SET user_id = ? WHERE user_id = ?", (new_id, old_id))
-
-        # আপনার ডাটাবেস কানেকশন Db বড় হাতের, তাই Db.commit()
-        db.commit() 
-        
-        # কতগুলো রো (Row) আপডেট হয়েছে তা চেক করা
-        if cursor.rowcount > 0:
-            await message.answer(f"✅ **আইডি সফলভাবে আপডেট হয়েছে!**\n\nপুরাতন: `{old_id}`\nনতুন: `{new_id}`", parse_mode="Markdown")
-        else:
-            await message.answer(f"⚠️ ডাটাবেসে `{old_id}` আইডিটি খুঁজে পাওয়া যায়নি। আইডি সঠিক আছে কি না চেক করুন।")
-            
-    except ValueError:
-        await message.answer("❌ আইডি অবশ্যই শুধু সংখ্যা হতে হবে!")
-    except Exception as e:
-        await message.answer(f"❌ ডাটাবেস এরর: {str(e)}")
-    
+  
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
