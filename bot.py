@@ -700,23 +700,23 @@ async def join_team_options_handler(message: types.Message):
     keyboard.row("🔙 ফিরে যান")
     await message.answer("নিচের অপশন থেকে একটি বেছে নিন:", reply_markup=keyboard)
 
-# --- ৩. ক্রিয়েট টিম লজিক (অ্যাডমিন আনলিমিটেড, ইউজার লিমিটেড) ---
-@dp.message_handler(lambda message: message.text == "🏗️ Create Team")
-async def start_team_creation(message: types.Message):
+# --- ক্রিয়েট টিম লজিক (সংশোধিত) ---
+@dp.message_handler(lambda message: message.text == "🏗️ Create Team", state="*")
+async def start_team_creation(message: types.Message, state: FSMContext):
+    await state.finish()
     user_id = message.from_user.id
     
-    # অ্যাডমিন কি না চেক করা (ADMIN_ID আপনার ফাইলের ১৫ নম্বর লাইন থেকে আসছে)
+    # অ্যাডমিন চেক (ADMIN_ID আপনার ফাইলের শুরুতে ডিফাইন করা আছে)
     if user_id != ADMIN_ID:
-        # সাধারণ ইউজার হলে ডাটাবেসে চেক করা সে ইতিমধ্যে কয়টি টিমের লিডার
-        cursor.execute("SELECT COUNT(*) FROM teams WHERE leader_id=?", (user_id,))
-        team_count = cursor.fetchone()[0]
+        # ডাটাবেসে চেক করা হচ্ছে এই ইউজার অলরেডি কোনো টিমের লিডার কি না
+        cursor.execute("SELECT * FROM teams WHERE leader_id = ?", (user_id,))
+        existing_team = cursor.fetchone()
         
-        # যদি ইউজার অলরেডি ১টি টিমের লিডার হয়ে থাকে
-        if team_count >= 1:
-            return await message.answer("❌ আপনি ইতিমধ্যে একটি টিম খুলেছেন। একজন ইউজার একটির বেশি টিম খুলতে পারবেন না।")
+        if existing_team:
+            return await message.answer("❌ **আপনি ইতিমধ্যে একটি টিম খুলেছেন!**\n\nসাধারণ ইউজাররা একটির বেশি টিম খুলতে পারবেন না।")
 
-    # অ্যাডমিন হলে সরাসরি এখানে চলে আসবে অথবা ইউজার নতুন হলে নাম চাইবে
-    await message.answer("📝 আপনার টিমের একটি নাম দিন:")
+    # অ্যাডমিন হলে বা ইউজার নতুন হলে নাম চাইবে
+    await message.answer("📝 আপনার টিমের একটি সুন্দর নাম দিন:")
     await BotState.waiting_for_team_name.set()
     
 @dp.message_handler(state=BotState.waiting_for_team_name)
