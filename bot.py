@@ -860,7 +860,7 @@ async def change_leader_id_handler(message: types.Message):
         cursor.execute("UPDATE blacklist SET user_id = ? WHERE user_id = ?", (new_id, old_id))
 
         # আপনার ডাটাবেস কানেকশন Db বড় হাতের, তাই Db.commit()
-        Db.commit() 
+        db.commit() 
         
         # কতগুলো রো (Row) আপডেট হয়েছে তা চেক করা
         if cursor.rowcount > 0:
