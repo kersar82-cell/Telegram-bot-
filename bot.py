@@ -57,6 +57,11 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS teams
 cursor.execute('''CREATE TABLE IF NOT EXISTS team_members 
                   (user_id INTEGER PRIMARY KEY, team_id INTEGER)''')
 db.commit()
+# এটি জয়েন করার লজিকের ভেতরে যেখানে ডাটাবেস এন্ট্রি হয় সেখানে দিন
+cursor.execute("INSERT OR IGNORE INTO team_members (user_id, team_id) VALUES (?, ?)", (user_id, team_id))
+cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+db.commit()
+
 
 class BotState(StatesGroup):
     waiting_for_file = State()
@@ -824,8 +829,52 @@ async def my_status_handler(message: types.Message, state: FSMContext):
         )
     
     msg += "━━━━━━━━━━━━━━━━━━"
+        # --- এই অংশটুকু আপনার my_status ফাংশনের ভেতরে যোগ করুন ---
+    # টিমের তথ্য চেক করা
+    cursor.execute("SELECT team_id, team_name FROM teams WHERE leader_id = ?", (user_id,))
+    team = cursor.fetchone()
+    
+    markup = None # শুরুতে বাটন খালি থাকবে
+    if team:
+        team_id, team_name = team
+        # যদি সে লিডার হয় তবে বাটন তৈরি হবে
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("👥 View Team Members", callback_data=f"show_members_{team_id}"))
+    # -------------------------------------------------------
+    
     await message.answer(msg, parse_mode="Markdown")
-  
+  # --- মেম্বার লিস্ট দেখানোর কলব্যাক (ফাইলের নিচে বসান) ---
+@dp.callback_query_handler(lambda c: c.data.startswith('show_members_'))
+async def process_callback_show_members(callback_query: types.CallbackQuery):
+    team_id = callback_query.data.split('_')[2]
+    
+    # ডাটাবেস থেকে মেম্বারের আইডি এবং ব্যালেন্স আনা
+    cursor.execute('''
+        SELECT tm.user_id, u.balance 
+        FROM team_members tm
+        LEFT JOIN users u ON tm.user_id = u.user_id
+        WHERE tm.team_id = ?
+    ''', (team_id,))
+    
+    members = cursor.fetchall()
+    
+    if not members:
+        return await bot.send_message(callback_query.from_user.id, "⚠️ এই টিমে এখনো কোনো মেম্বার জয়েন করেনি।")
+
+    response = "👥 **টিম মেম্বারদের তালিকা:**\n"
+    response += "━━━━━━━━━━━━━━━━━━\n"
+    
+    for i, member in enumerate(members, 1):
+        uid, bal = member
+        balance = bal if bal is not None else 0
+        response += f"{i}. 🆔 `{uid}` — 💰 `{balance}` TK\n"
+    
+    response += "━━━━━━━━━━━━━━━━━━\n"
+    response += f"📊 মোট মেম্বার: {len(members)} জন"
+
+    await bot.answer_callback_query(callback_query.id)
+    await bot.send_message(callback_query.from_user.id, response, parse_mode="Markdown")
+                                      
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
