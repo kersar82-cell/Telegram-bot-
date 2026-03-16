@@ -753,55 +753,70 @@ async def show_all_teams_handler(message: types.Message):
         txt += f"🔹 {t[1]} — আইডি: `{t[0]}`\n"
     txt += "\n🤝 জয়েন করতে লিখুন: `/join আইডি`"
     await message.answer(txt, parse_mode="Markdown")
-    # --- মাই স্ট্যাটাস (আপডেট করা) ---
-@dp.message_handler(lambda message: message.text == "📊 My Status")
-async def my_status_handler(message: types.Message):
+    # --- মাই স্ট্যাটাস (লিডারদের জন্য ইনকাম রিপোর্ট সহ) ---
+@dp.message_handler(lambda message: message.text == "📊 My Status", state="*")
+async def my_status_handler(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     
-    # চেক করা ইউজার কোন টিমে আছে
+    # ইউজার কোন টিমে আছে তা বের করা
     cursor.execute("SELECT team_id FROM team_members WHERE user_id=?", (user_id,))
     res = cursor.fetchone()
     
-    if res:
-        t_id = res[0]
-        
-        # ১. টিমের সাধারণ তথ্য (নাম, লিডার, টার্গেট) আনা
-        cursor.execute("SELECT team_name, leader_id, daily_target FROM teams WHERE team_id=?", (t_id,))
-        t_info = cursor.fetchone()
-        
-        # ২. টিমে মোট কতজন মেম্বার আছে তা গণনা করা
-        cursor.execute("SELECT COUNT(user_id) FROM team_members WHERE team_id=?", (t_id,))
-        member_count = cursor.fetchone()[0]
-        
-        # ৩. ওই টিমের সকল মেম্বারের পাঠানো মোট ফাইল এবং সিঙ্গেল আইডির যোগফল বের করা
-        # এটি কাজ করার জন্য stats টেবিলে user_id থাকতে হবে
-        cursor.execute('''SELECT SUM(stats.file_count), SUM(stats.single_id_count) 
-                          FROM team_members 
-                          LEFT JOIN stats ON team_members.user_id = stats.user_id 
-                          WHERE team_members.team_id=?''', (t_id,))
-        work_stats = cursor.fetchone()
-        
-        total_files = work_stats[0] if work_stats[0] else 0
-        total_singles = work_stats[1] if work_stats[1] else 0
+    if not res:
+        return await message.answer("❌ আপনি বর্তমানে কোনো টিমে যুক্ত নেই।")
+    
+    t_id = res[0]
+    
+    # টিমের তথ্য এবং লিডার কে তা বের করা
+    cursor.execute("SELECT team_name, leader_id, daily_target FROM teams WHERE team_id=?", (t_id,))
+    t_info = cursor.fetchone()
+    team_name, leader_id, target = t_info[0], t_info[1], t_info[2]
 
-        # মেসেজ ফরম্যাট
-        msg = (
-            f"📊 **আপনার টিমের স্ট্যাটাস**\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"👥 **টিমের নাম:** {t_info[0]}\n"
-            f"🆔 **টিম আইডি:** `{t_id}`\n"
-            f"👑 **টিম লিডার আইডি:** `{t_info[1]}`\n"
-            f"👨‍ন্ত**মোট মেম্বার:** {member_count} জন\n"
-            f"🎯 **ডেইলি টার্গেট:** {t_info[2]} টি\n\n"
-            f"📈 **টিমের মোট কাজের রিপোর্ট:**\n"
-            f"📁 মোট ফাইল জমা: {total_files} টি\n"
-            f"🆔 মোট সিঙ্গেল আইডি: {total_singles} টি\n"
-            f"━━━━━━━━━━━━━━━━━━"
-        )
-        await message.answer(msg, parse_mode="Markdown")
-    else:
-        await message.answer("❌ আপনি বর্তমানে কোনো টিমে যুক্ত নেই।")
+    # মেম্বার সংখ্যা গণনা
+    cursor.execute("SELECT COUNT(user_id) FROM team_members WHERE team_id=?", (t_id,))
+    member_count = cursor.fetchone()[0]
+
+    # টিমের মোট কাজের স্ট্যাটাস (ফাইল এবং সিঙ্গেল আইডি)
+    cursor.execute('''SELECT SUM(stats.file_count), SUM(stats.single_id_count) 
+                      FROM team_members 
+                      LEFT JOIN stats ON team_members.user_id = stats.user_id 
+                      WHERE team_members.team_id=?''', (t_id,))
+    work_stats = cursor.fetchone()
+    total_files = work_stats[0] if work_stats[0] else 0
+    total_singles = work_stats[1] if work_stats[1] else 0
+
+    # মূল মেসেজ তৈরি
+    msg = (
+        f"📊 **টিম স্ট্যাটাস রিপোর্ট**\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"👥 নাম: {team_name}\n"
+        f"👑 **টিম লিডার আইডি:** `{t_info[1]}`\n"
+        f"🆔 আইডি: `{t_id}`\n"
+        f"👨‍👩‍👧‍👦 মোট মেম্বার: {member_count} জন\n"
+        f"🎯 লক্ষ্য: {target} টি\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"📈 মোট কাজ:\n"
+        f"📁 ফাইল: {total_files} টি | 🆔 আইডি: {total_singles} টি\n"
+    )
+
+    # --- লিডার চেক এবং টাকা হিসাব করা ---
+    if user_id == leader_id:
+        # এখানে আপনার রেট বসান (যেমন: প্রতি ফাইল ৫ টাকা, প্রতি আইডি ২ টাকা)
+        # আপনি আপনার রেট অনুযায়ী নিচের সংখ্যাগুলো বদলে নিতে পারেন
+        file_rate = 5.0  # একটি ফাইলের দাম
+        id_rate = 2.0    # একটি আইডির দাম
         
+        total_money = (total_files * file_rate) + (total_singles * id_rate)
+        
+        msg += (
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"💰 **টিমের মোট ইনকাম: {total_money:.2f} ৳**\n"
+            f"⚠️ (এই অংশটি শুধু আপনি লিডার হিসেবে দেখতে পাচ্ছেন)\n"
+        )
+    
+    msg += "━━━━━━━━━━━━━━━━━━"
+    await message.answer(msg, parse_mode="Markdown")
+
     # --- ফিরে যাওয়ার গ্লোবাল হ্যান্ডলার ---
 @dp.message_handler(lambda message: message.text in ["🔙 ফিরে যান", "⬅️ Back", "🔙 Back to Main Menu"], state="*")
 async def back_to_main_menu(message: types.Message, state: FSMContext):
