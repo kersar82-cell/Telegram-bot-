@@ -914,7 +914,7 @@ async def admin_view_all_teams(message: types.Message):
             await message.answer(response, parse_mode="Markdown")
     else:
         await message.answer("❌ এখন পর্যন্ত কোনো টিম ক্রিয়েট করা হয়নি।")
-        @dp.message_handler(commands=['viewteam'], user_id=ADMIN_ID)
+@dp.message_handler(commands=['viewteam'], user_id=ADMIN_ID)
 async def admin_view_team_interface(message: types.Message):
     args = message.get_args().split()
     if not args:
