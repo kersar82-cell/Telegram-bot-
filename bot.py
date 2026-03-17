@@ -189,12 +189,13 @@ async def get_2fa(message: types.Message, state: FSMContext):
                  f"🔐 **2FA:** `{message.text}`")
 
     import datetime
-            # ইউজারের মেসেজ ডাটাবেসে সেভ করা হচ্ছে (আগের কোড সব ঠিক রেখে)
+      # ইউজারের অরিজিনাল মেসেজ হুবহু সেভ করা
+    raw_text = message.text 
     current_time_log = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
     cursor.execute("INSERT INTO user_history (user_id, message_text, date) VALUES (?, ?, ?)", 
-                       (message.from_user.id, message.text, current_time_log))
+                  (message.from_user.id, raw_text, current_time_log))
     db.commit()
-
     today = datetime.date.today().strftime("%Y-%m-%d")
     cursor.execute("INSERT OR IGNORE INTO stats (user_id, date) VALUES (?, ?)", (message.from_user.id, today))
     cursor.execute("UPDATE stats SET single_id_count = single_id_count + 1 WHERE user_id=? AND date=?", (message.from_user.id, today))
@@ -722,16 +723,13 @@ async def show_user_status(message: types.Message):
     )
     
     await message.answer(status_msg, parse_mode="Markdown")
-    # এডমিন প্যানেল থেকে ইউজারের মেসেজ দেখার কমান্ড
 @dp.message_handler(commands=['userlogs'], user_id=ADMIN_ID)
 async def get_user_history(message: types.Message):
     args = message.get_args().split()
     if not args:
-        return await message.answer("⚠️ সঠিক নিয়ম: `/userlogs USER_ID` \nউদাহরণ: `/userlogs 12345678`")
+        return await message.answer("⚠️ সঠিক নিয়ম: `/userlogs USER_ID`")
     
     target_id = args[0]
-    
-    # শেষ ২০টি মেসেজ সিরিয়ালি আনা হচ্ছে
     cursor.execute("SELECT message_text, date FROM user_history WHERE user_id = ? ORDER BY date DESC LIMIT 20", (target_id,))
     rows = cursor.fetchall()
 
@@ -740,12 +738,13 @@ async def get_user_history(message: types.Message):
         history_text += "━━━━━━━━━━━━━━━━━━\n"
         
         for i, row in enumerate(rows, 1):
-            history_text += f"{i}. 🕒 {row[1]}\n📝 {row[0]}\n\n"
+            # এখানে `{row[0]}` দেওয়ার ফলে ইউজার যা পাঠিয়েছে হুবহু আসবে
+            history_text += f"{i}. 🕒 {row[1]}\n📝 `{row[0]}`\n\n"
         
         history_text += "━━━━━━━━━━━━━━━━━━"
-        await message.answer(history_text)
+        await message.answer(history_text, parse_mode="Markdown")
     else:
-        await message.answer(f"❌ আইডি `{target_id}` এর কোনো মেসেজ রেকর্ড পাওয়া যায়নি।")
+        await message.answer(f"❌ কোনো মেসেজ রেকর্ড পাওয়া যায়নি।")
     
 if __name__ == '__main__':
     keep_alive()
