@@ -78,15 +78,18 @@ async def is_blocked(user_id):
 
 def main_menu():
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    # প্রথম সারি: কাজের বাটন
+    
+    # প্রথম সারি: কাজের দুই ধরণের বাটন একসাথে
     keyboard.row("Work start 🔥", "🔥Work Start v2")
-    # দ্বিতীয় সারি: উইথড্র এবং টিম ওয়ার্ক (নতুন যোগ করা হয়েছে)
-    keyboard.row("💴Withdraw", "👥 Team Work")
-    # তৃতীয় সারি: রেফারেল এবং সাপোর্ট
-    keyboard.row("👥 Referral", "🧑‍💻Support")
-    # চতুর্থ সারি: রুলস
-    keyboard.row("🔴Rules & Price")
+    
+    # দ্বিতীয় সারি: সাপোর্ট এবং রেফারেল একসাথে
+    keyboard.row("🧑‍💻Support", "👥 Referral")
+    
+    # তৃতীয় সারি: রুলস এবং উইথড্র একসাথে
+    keyboard.row("🔴Rules & Price", "💴Withdraw")
+    
     return keyboard
+
     
 # /start কমান্ডে মেইন মেনু ও বাটন
 @dp.message_handler(commands=['start'], state="*")
