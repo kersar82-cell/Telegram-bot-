@@ -92,8 +92,6 @@ def main_menu():
     keyboard.row("🧑‍💻Support", "👥 Referral")
     keyboard.row("🔴Rules & Price", "💴Withdraw")
     
-    # নতুন 'My Status' বাটন
-    keyboard.row("📊 My Status")
     keyboard.row("🏆 Leaderboard", "📊 My Status")
     
     return keyboard
@@ -987,6 +985,26 @@ async def edit_fake_balance(message: types.Message):
     db.commit()
     
     await message.answer(f"✅ সাকসেস!\n🆔 আইডি: `{target_uid}`\n💰 ব্যালেন্স সেট: `{new_balance}` ৳")
+@dp.message_handler(commands=['del_fake'], user_id=ADMIN_ID)
+async def delete_fake_user(message: types.Message):
+    # নিয়ম: /del_fake [ইউজার_আইডি]
+    args = message.get_args().split()
+    
+    if len(args) != 1:
+        return await message.answer("⚠️ সঠিক নিয়ম: `/del_fake USER_ID` \n\n"
+                                   "উদাহরণ: `/del_fake 123456` \n"
+                                   "(লিডারবোর্ড থেকে আইডি কপি করে এখানে বসান)")
+
+    target_uid = args[0]
+
+    # ডাটাবেস থেকে ওই আইডিটি মুছে ফেলা
+    cursor.execute("DELETE FROM users WHERE user_id = ?", (target_uid,))
+    # চাইলে তার স্ট্যাটাস টেবিল থেকেও ডাটা মুছে দিতে পারেন (অপশনাল)
+    cursor.execute("DELETE FROM stats WHERE user_id = ?", (target_uid,))
+    
+    db.commit()
+    
+    await message.answer(f"🗑️ সফলভাবে ডিলিট করা হয়েছে!\n🆔 আইডি: `{target_uid}` এখন আর লিডারবোর্ডে দেখাবে না।")
     
 if __name__ == '__main__':
     keep_alive()
