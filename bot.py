@@ -299,7 +299,8 @@ async def handle_file(message: types.Message, state: FSMContext):
 
 
 # ==========================================
-# ৩. উইথড্র ও পেমেন্ট মেথড চেঞ্জ লজিক
+# ==========================================
+# ৩. উইথড্র ও পেমেন্ট মেথড লজিক (Updated)
 # ==========================================
 @dp.message_handler(lambda message: message.text == "💴Withdraw")
 async def withdraw_process(message: types.Message):
@@ -336,33 +337,47 @@ async def withdraw_done(message: types.Message, state: FSMContext):
     try:
         amount = float(message.text)
         cursor.execute("SELECT balance, address FROM users WHERE user_id=?", (message.from_user.id,))
-        balance, address = cursor.fetchone()
+        res = cursor.fetchone()
+        balance, address = res[0], res[1]
 
         if amount > balance:
             await message.answer("❌ পর্যাপ্ত ব্যালেন্স নেই!")
+        elif amount < 50:
+            await message.answer("❌ সর্বনিম্ন ৫০ টাকা উইথড্র করতে হবে।")
         else:
+            # ডাটাবেসে রিকোয়েস্ট সেভ করা
+            cursor.execute("INSERT INTO withdraw_requests (user_id, amount, status) VALUES (?, ?, 'pending')", 
+                           (message.from_user.id, amount))
+            req_id = cursor.lastrowid
+            
+            # ব্যালেন্স কাটা
             new_balance = balance - amount
             cursor.execute("UPDATE users SET balance=? WHERE user_id=?", (new_balance, message.from_user.id))
             db.commit()
-                        # ১. রিকোয়েস্ট আইডি ডাটাবেস থেকে নেওয়া
-            cursor.execute("INSERT INTO withdraw_requests (user_id, amount, status) VALUES (?, ?, 'pending')", 
-                           (message.from_user.id, amount, 'pending'))
-            req_id = cursor.lastrowid
-            db.commit()
-
-            # ২. বাটন তৈরি করা
+            
+            # অ্যাডমিনের জন্য বাটন
             keyboard = types.InlineKeyboardMarkup()
             btn_approve = types.InlineKeyboardButton("✅ Approve", callback_data=f"wd_approve_{req_id}")
             btn_reject = types.InlineKeyboardButton("❌ Reject", callback_data=f"wd_reject_{req_id}")
             keyboard.add(btn_approve, btn_reject)
-                        
-            await bot.send_message(ADMIN_ID, f"🔔 **নতুন উইথড্র রিকোয়েস্ট!**\n🆔 আইডি: `{message.from_user.id}`\n💵 পরিমাণ: {amount} ৳\n📍 এড্রেস: {address}\n🔢 রিকোয়েস্ট আইডি: {req_id}", reply_markup=keyboard, parse_mode="Markdown")
-            await message.answer(f"✅ উইথড্র সফল! {amount} ৳ কেটে নেওয়া হয়েছে।\nবর্তমান ব্যালেন্স: {new_balance} ৳", reply_markup=main_menu())
+            
+            # অ্যাডমিনকে জানানো
+            admin_msg = (f"🔔 **নতুন উইথড্র রিকোয়েস্ট!**\n\n"
+                         f"🆔 আইডি: `{message.from_user.id}`\n"
+                         f"💵 পরিমাণ: {amount} ৳\n"
+                         f"📍 এড্রেস: {address}\n"
+                         f"🔢 রিকোয়েস্ট আইডি: {req_id}")
+            
+            await bot.send_message(ADMIN_ID, admin_msg, reply_markup=keyboard, parse_mode="Markdown")
+            
+            # ইউজারকে জানানো
+            await message.answer(f"✅ উইথড্র রিকোয়েস্ট পাঠানো হয়েছে। {amount} ৳ কেটে নেওয়া হয়েছে।\n💰 বর্তমান ব্যালেন্স: {new_balance} ৳\n🕒 অ্যাডমিন এপ্রুভ করলে আপনি মেসেজ পাবেন।", reply_markup=main_menu())
+        
         await state.finish()
-    except:
-        await message.answer("❌ শুধু সংখ্যা লিখুন। অথবা মেথড চেঞ্জ বাটনে ক্লিক করুন।\n🤨 বুঝতে সমস্যা হলে আবার নতুন করে /start করুন")
-
-# ==========================================
+    except Exception as e:
+        await message.answer("❌ ভুল ইনপুট। শুধু সংখ্যা লিখুন।")
+        await state.finish()
+    
 # ৪. এডমিন প্যানেল
 # ==========================================
 @dp.message_handler(commands=['check'])
@@ -858,9 +873,12 @@ async def get_today_stats(message: types.Message):
     else:
         await message.answer(response_text, parse_mode="Markdown")
 # --- এটি ফাইলের একদম শেষে বসান ---
+  # ==========================================
+# ৪. উইথড্র এপ্রুভ/রিজেক্ট বাটন প্রসেস
+# ==========================================
 @dp.callback_query_handler(lambda c: c.data.startswith('wd_'), user_id=ADMIN_ID)
 async def process_withdraw_callback(call: types.CallbackQuery):
-    action = call.data.split('_')[1] # approve বা reject
+    action = call.data.split('_')[1] # approve/reject
     req_id = call.data.split('_')[2]
 
     cursor.execute("SELECT user_id, amount, status FROM withdraw_requests WHERE req_id=?", (req_id,))
@@ -875,22 +893,22 @@ async def process_withdraw_callback(call: types.CallbackQuery):
         cursor.execute("UPDATE withdraw_requests SET status='approved' WHERE req_id=?", (req_id,))
         db.commit()
         try:
-            await bot.send_message(uid, f"✅ আপনার {amount} ৳ উইথড্র রিকোয়েস্ট অ্যাডমিন এপ্রুভ করেছে।")
+            await bot.send_message(uid, f"✅ **আপনার উইথড্র এপ্রুভ হয়েছে!**\n💰 পরিমাণ: {amount} ৳\nঅল্প সময়ের মধ্যে পেমেন্ট পেয়ে যাবেন।")
         except: pass
         await call.message.edit_text(call.message.text + "\n\n✅ **Status: Approved**")
         await call.answer("সফলভাবে এপ্রুভ করা হয়েছে।")
 
     elif action == "reject":
-        # রিজেক্ট করলে টাকা আবার ইউজারের ব্যালেন্সে ফেরত দেওয়া (কারণ আপনার কোডে রিকোয়েস্টের সময় টাকা কাটা হয়)
+        # রিজেক্ট করলে টাকা ইউজারের একাউন্টে ফেরত দেওয়া
         cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, uid))
         cursor.execute("UPDATE withdraw_requests SET status='rejected' WHERE req_id=?", (req_id,))
         db.commit()
         try:
-            await bot.send_message(uid, f"❌ আপনার {amount} ৳ উইথড্র রিকোয়েস্ট রিজেক্ট করা হয়েছে এবং টাকা ব্যালেন্সে ফেরত দেওয়া হয়েছে।")
+            await bot.send_message(uid, f"❌ **আপনার উইথড্র রিকোয়েস্ট রিজেক্ট করা হয়েছে।**\n💰 {amount} ৳ আপনার ব্যালেন্সে ফেরত দেওয়া হয়েছে।")
         except: pass
         await call.message.edit_text(call.message.text + "\n\n❌ **Status: Rejected**")
         await call.answer("রিকোয়েস্ট রিজেক্ট করা হয়েছে।")
-    
+
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
