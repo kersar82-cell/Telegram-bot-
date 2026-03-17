@@ -989,44 +989,46 @@ async def edit_fake_balance(message: types.Message):
 async def show_leaderboard(message: types.Message):
     user_id = message.from_user.id
     
-    # ১. সেরা ৫ জনকে বের করা (ব্যালেন্স অনুযায়ী)
-    cursor.execute("SELECT user_id, username, balance FROM users ORDER BY balance DESC LIMIT 5")
+    # ১. সেরা ৫ জনকে বের করা (ইউজার আইডি এবং ব্যালেন্স)
+    cursor.execute("SELECT user_id, balance FROM users ORDER BY balance DESC LIMIT 5")
     top_rows = cursor.fetchall()
 
     if not top_rows:
         return await message.answer("🏆 লিডারবোর্ড এখনো খালি!")
 
-    # ২. ইউজারের নিজের র‍্যাঙ্ক/পজিশন বের করা
+    # ২. ইউজারের নিজের র‍্যাঙ্ক বের করা
     cursor.execute("""
         SELECT COUNT(*) + 1 FROM users 
         WHERE balance > (SELECT balance FROM users WHERE user_id = ?)
     """, (user_id,))
-    user_rank = cursor.fetchone()[0]
+    user_rank_res = cursor.fetchone()
+    user_rank = user_rank_res[0] if user_rank_res else "N/A"
 
     # ইউজারের নিজের ব্যালেন্স নেওয়া
     cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
     user_balance_res = cursor.fetchone()
     user_balance = user_balance_res[0] if user_balance_res else 0
 
-    # ৩. মেসেজ সাজানো
+    # ৩. মেসেজ সাজানো (এখানে নাম এর বদলে UID দেখানো হয়েছে)
     text = "🏆 **সর্বোচ্চ ব্যালেন্সধারী ৫ জন কর্মী** 🏆\n"
     text += "━━━━━━━━━━━━━━━━━━━\n\n"
     
     emojis = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
     
     for i, row in enumerate(top_rows):
-        _, name, balance = row
-        display_name = name if name else "Worker"
-        text += f"{emojis[i]} **{display_name}**\n└─ 💰 ব্যালেন্স: {balance} ৳\n\n"
+        uid, balance = row
+        # এখানে নামের পরিবর্তে UID ব্যবহার করা হয়েছে
+        text += f"{emojis[i]} **UID:** `{uid}`\n└─ 💰 ব্যালেন্স: {balance} ৳\n\n"
 
-    # ৪. নিচে ইউজারের নিজের পজিশন যোগ করা
+    # ৪. নিচে ইউজারের নিজের পজিশন
     text += "━━━━━━━━━━━━━━━━━━━\n"
-    text += f"👤 **আপনার অবস্থান:** {user_rank} তম\n"
-    text += f"💰 **আপনার ব্যালেন্স:** {user_balance} ৳\n"
+    text += f"👤 **আপনার আইডি:** `{user_id}`\n"
+    text += f"📊 **অবস্থান:** {user_rank} তম\n"
+    text += f"💰 **ব্যালেন্স:** {user_balance} ৳\n"
     text += "━━━━━━━━━━━━━━━━━━━\n🔥 বেশি কাজ করে লিডারবোর্ডে নাম তুলুন!"
     
     await message.answer(text, parse_mode="Markdown")
-                    
+    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
