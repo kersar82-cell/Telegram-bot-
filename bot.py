@@ -88,39 +88,28 @@ def main_menu():
     keyboard.row("🔴Rules & Price")
     return keyboard
     
-# /start কমান্ডে মেইন মেনু ও ফ্রী ফায়ার বাটন
+# /start কমান্ডে মেইন মেনু ও বাটন
 @dp.message_handler(commands=['start'], state="*")
 async def start(message: types.Message, state: FSMContext):
     await state.finish() 
     cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (message.from_user.id,))
     db.commit()
-def team_menu():
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.row("🏗️ Create Team", "🤝 Join Team")
-    keyboard.row("📊 My Team", "🔄 রিফ্রেশ")
-    return keyboard
-    
-    # ১. এখানে বাটন তৈরি হচ্ছে
-    inline_kb = types.InlineKeyboardMarkup()
-    inline_kb = types.InlineKeyboardMarkup(row_width=2) # row_width=1
-    # নিচের লাইনে 'url' এর জায়গায় আপনার গ্রুপের লিংক বসান 
+
+    inline_kb = types.InlineKeyboardMarkup(row_width=2)
     help_button = types.InlineKeyboardButton(text="🆘 Contact Support", url="https://t.me/instafbhub_support") 
     inline_kb.add(help_button)
-    # ২. এখানে আপনার মেসেজটি লিখুন (লাইন ব্রেক বা ইন্টার দিতে \n ব্যবহার করুন)
-        # ২. এখানে আপনার বড় মেসেজটি (রেট লিস্ট) বসাবেন
+
     welcome_text = """📢 আজকের কাজের আপডেট এবং রেট লিস্ট 📢
-📌 Instagram 00 Follower (2FA): ২.৩০ ৳
+📌 Instagram 2FA: ২.৩০ ৳
 📌 Instagram Cookies: ৩.৯০ ৳
 📌 Instagram Mother: ৭ ৳
 📌 Facebook FBc00Fnd: ৫.৮০ ৳
 
-  Support: @Dinanhaji"""
+Support: @Dinanhaji"""
 
-    # ৩. মেসেজ পাঠানো (বাটনসহ এবং parse_mode যোগ করে)
+    # এই লাইনগুলোই এরর দিচ্ছিল, এখন এগুলো async def-এর ভেতরে আছে
     await message.answer(welcome_text, reply_markup=inline_kb, parse_mode="Markdown")
-    
-    # ৪. মেইন মেনু দেখানো
-    await message.answer("✅Instagram 2fa &\n Mother ACCOUNT ↓↓\n 🔥Work Start\n\n🟢 Instagram cookies &\n FB 00 Fnd 2fa↓↓\n🔥WorkStart v2", reply_markup=main_menu())
+    await message.answer("✅ আপনার কাজের ধরণ বেছে নিন:", reply_markup=main_menu())
     
 # =========================================
 @dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa"])
