@@ -94,6 +94,7 @@ def main_menu():
     
     # নতুন 'My Status' বাটন
     keyboard.row("📊 My Status")
+    keyboard.row("🏆 Leaderboard", "📊 My Status")
     
     return keyboard
     
@@ -908,7 +909,124 @@ async def process_withdraw_callback(call: types.CallbackQuery):
         except: pass
         await call.message.edit_text(call.message.text + "\n\n❌ **Status: Rejected**")
         await call.answer("রিকোয়েস্ট রিজেক্ট করা হয়েছে।")
+import random
 
+@dp.message_handler(commands=['add_fake'], user_id=ADMIN_ID)
+async def add_fake_leaderboard(message: types.Message):
+    # নিয়ম: /add_fake [নাম] [ব্যালেন্স]
+    args = message.get_args().split()
+    
+    if len(args) < 2:
+        return await message.answer("⚠️ নিয়ম: `/add_fake NAME BALANCE` \n\n"
+                                   "উদাহরণ: `/add_fake Top_Earner 5000` \n"
+                                   "(নামে স্পেস দিতে চাইলে আন্ডারস্কোর _ ব্যবহার করুন)")
+
+    fake_name = args[0].replace("_", " ")
+    try:
+        balance = float(args[1])
+    except:
+        return await message.answer("❌ ব্যালেন্স অবশ্যই নম্বর হতে হবে।")
+
+    # একটি ফেক আইডি জেনারেট করা
+    fake_uid = random.randint(100000, 999999) 
+
+    # ডাটাবেসে ইউজার এবং তার ব্যালেন্স সেভ করা
+    cursor.execute("INSERT INTO users (user_id, username, balance) VALUES (?, ?, ?)", (fake_uid, fake_name, balance))
+    db.commit()
+
+    await message.answer(f"✅ লিডারবোর্ডে ফেক ইউজার যুক্ত হয়েছে!\n👤 নাম: {fake_name}\n💰 ব্যালেন্স: {balance} ৳")
+@dp.message_handler(lambda message: message.text == "🏆 Leaderboard")
+async def show_leaderboard(message: types.Message):
+    # ডাটাবেস থেকে সবচেয়ে বেশি ব্যালেন্স থাকা ৫ জনকে আনা
+    cursor.execute("""
+        SELECT username, balance 
+        FROM users 
+        ORDER BY balance DESC LIMIT 5
+    """)
+    rows = cursor.fetchall()
+
+    if not rows:
+        return await message.answer("🏆 লিডারবোর্ড এখনো খালি!")
+
+    text = "🏆 **সর্বোচ্চ ব্যালেন্সধারী ৫ জন কর্মী** 🏆\n"
+    text += "━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    # পজিশন অনুযায়ী ইমোজি
+    emojis = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+    
+    for i, row in enumerate(rows):
+        name, balance = row
+        display_name = name if name else "Worker"
+        # ব্যালেন্স ফরম্যাট করা (যেমন: ৫০০.০ ৳)
+        text += f"{emojis[i]} **{display_name}**\n└─ 💰 ব্যালেন্স: {balance} ৳\n\n"
+
+    text += "━━━━━━━━━━━━━━━━━━━\n🔥 বেশি কাজ করে লিডারবোর্ডে নাম তুলুন!"
+    
+    await message.answer(text, parse_mode="Markdown")
+@dp.message_handler(commands=['edit_fake'], user_id=ADMIN_ID)
+async def edit_fake_balance(message: types.Message):
+    # নিয়ম: /edit_fake [ইউজার_আইডি] [নতুন_ব্যালেন্স]
+    # আপনি লিডারবোর্ড থেকে আইডি কপি করে এটি ব্যবহার করতে পারবেন
+    args = message.get_args().split()
+    
+    if len(args) != 2:
+        return await message.answer("⚠️ সঠিক নিয়ম: `/edit_fake USER_ID NEW_BALANCE` \n\n"
+                                   "উদাহরণ: `/edit_fake 123456 2500` \n"
+                                   "(এটি ওই আইডির ব্যালেন্স সরাসরি ২৫০০ করে দিবে)")
+
+    target_uid = args[0]
+    try:
+        new_balance = float(args[1])
+    except:
+        return await message.answer("❌ ব্যালেন্স অবশ্যই একটি নম্বর হতে হবে।")
+
+    # ডাটাবেসে ব্যালেন্স আপডেট করা
+    cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (new_balance, target_uid))
+    db.commit()
+    
+    await message.answer(f"✅ সাকসেস!\n🆔 ইউজার: `{target_uid}`\n💰 নতুন ব্যালেন্স সেট করা হয়েছে: `{new_balance}` ৳\n\nএখন লিডারবোর্ড চেক করে দেখুন।")
+@dp.message_handler(lambda message: message.text == "🏆 Leaderboard")
+async def show_leaderboard(message: types.Message):
+    user_id = message.from_user.id
+    
+    # ১. সেরা ৫ জনকে বের করা (ব্যালেন্স অনুযায়ী)
+    cursor.execute("SELECT user_id, username, balance FROM users ORDER BY balance DESC LIMIT 5")
+    top_rows = cursor.fetchall()
+
+    if not top_rows:
+        return await message.answer("🏆 লিডারবোর্ড এখনো খালি!")
+
+    # ২. ইউজারের নিজের র‍্যাঙ্ক/পজিশন বের করা
+    cursor.execute("""
+        SELECT COUNT(*) + 1 FROM users 
+        WHERE balance > (SELECT balance FROM users WHERE user_id = ?)
+    """, (user_id,))
+    user_rank = cursor.fetchone()[0]
+
+    # ইউজারের নিজের ব্যালেন্স নেওয়া
+    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+    user_balance_res = cursor.fetchone()
+    user_balance = user_balance_res[0] if user_balance_res else 0
+
+    # ৩. মেসেজ সাজানো
+    text = "🏆 **সর্বোচ্চ ব্যালেন্সধারী ৫ জন কর্মী** 🏆\n"
+    text += "━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    emojis = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+    
+    for i, row in enumerate(top_rows):
+        _, name, balance = row
+        display_name = name if name else "Worker"
+        text += f"{emojis[i]} **{display_name}**\n└─ 💰 ব্যালেন্স: {balance} ৳\n\n"
+
+    # ৪. নিচে ইউজারের নিজের পজিশন যোগ করা
+    text += "━━━━━━━━━━━━━━━━━━━\n"
+    text += f"👤 **আপনার অবস্থান:** {user_rank} তম\n"
+    text += f"💰 **আপনার ব্যালেন্স:** {user_balance} ৳\n"
+    text += "━━━━━━━━━━━━━━━━━━━\n🔥 বেশি কাজ করে লিডারবোর্ডে নাম তুলুন!"
+    
+    await message.answer(text, parse_mode="Markdown")
+                    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
