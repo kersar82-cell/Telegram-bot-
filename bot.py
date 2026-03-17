@@ -68,10 +68,7 @@ class BotState(StatesGroup):
     waiting_for_admin_msg = State()
     waiting_for_team_name = State()
     waiting_for_referrer_info = State() # এটি নতুন যোগ করুন
-    # আপনার আগের স্টেটগুলো থাকবে...
-    waiting_for_team_name = State()
-    waiting_for_join_id = State()
-    
+
 async def is_blocked(user_id):
     cursor.execute("SELECT user_id FROM blacklist WHERE user_id=?", (user_id,))
     return cursor.fetchone() is not None
@@ -79,17 +76,16 @@ async def is_blocked(user_id):
 def main_menu():
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     
-    # প্রথম সারি: কাজের দুই ধরণের বাটন একসাথে
+    # আপনার পছন্দমতো জোড়ায় জোড়ায় সাজানো
     keyboard.row("Work start 🔥", "🔥Work Start v2")
-    
-    # দ্বিতীয় সারি: সাপোর্ট এবং রেফারেল একসাথে
     keyboard.row("🧑‍💻Support", "👥 Referral")
-    
-    # তৃতীয় সারি: রুলস এবং উইথড্র একসাথে
     keyboard.row("🔴Rules & Price", "💴Withdraw")
     
+    # নতুন 'My Status' বাটন
+    keyboard.row("📊 My Status")
+    
     return keyboard
-
+    
     
 # /start কমান্ডে মেইন মেনু ও বাটন
 @dp.message_handler(commands=['start'], state="*")
@@ -686,111 +682,36 @@ async def show_only_rules(message: types.Message):
     
     if msg:
         await message.answer(msg, parse_mode="Markdown")
-    # --- ১. টিম তৈরি করা ---
-@dp.message_handler(commands=['create_team'])
-async def create_team_start(message: types.Message):
-    await message.answer("🏗️ আপনার টিমের একটি সুন্দর নাম দিন:")
-    await BotState.waiting_for_team_name.set()
+@dp.message_handler(lambda message: message.text == "📊 My Status")
+async def show_user_status(message: types.Message):
+    user_id = message.from_user.id
+    
+    # ডাটাবেস থেকে ইউজারের ব্যালেন্স এবং অন্যান্য তথ্য আনা
+    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+    user_data = cursor.fetchone()
+    balance = user_data[0] if user_data else 0
 
-@dp.message_handler(state=BotState.waiting_for_team_name)
-async def save_team(message: types.Message, state: FSMContext):
-    team_name = message.text
-    leader_id = message.from_user.id
+    # স্ট্যাটাস টেবিল থেকে ফাইল এবং সিঙ্গেল আইডির সংখ্যা আনা
+    cursor.execute("SELECT file_count, single_id_count FROM stats WHERE user_id = ?", (user_id,))
+    stats_data = cursor.fetchone()
     
-    # ডাটাবেসে টিম সেভ করা
-    cursor.execute("INSERT INTO teams (team_name, leader_id) VALUES (?, ?)", (team_name, leader_id))
-    db.commit()
-    
-    # টিমের আইডি খুঁজে বের করা
-    t_id = cursor.lastrowid
-    
-    # লিডারকে মেম্বার হিসেবেও নিজের টিমে যোগ করা
-    cursor.execute("INSERT OR IGNORE INTO team_members (user_id, team_id) VALUES (?, ?)", (leader_id, t_id))
-    db.commit()
-    
-    await message.answer(f"✅ অভিনন্দন! আপনার টিম তৈরি হয়েছে।\n\n📛 নাম: {team_name}\n🆔 টিম আইডি: `{t_id}`\n\n📢 আপনার মেম্বারদের এই আইডিটি দিন। তারা `/join_team {t_id}` লিখে যোগ দিতে পারবে।")
-    await state.finish()
+    file_count = stats_data[0] if stats_data else 0
+    single_id_count = stats_data[1] if stats_data else 0
 
-# --- ২. টিমে যোগ দেওয়া ---
-@dp.message_handler(commands=['join_team'])
-async def join_team(message: types.Message):
-    args = message.get_args()
-    if not args:
-        return await message.answer("⚠️ সঠিক ফরম্যাট: `/join_team টিম_আইডি` লিখুন।")
-    
-    try:
-        t_id = int(args)
-        # চেক করা টিমটি আছে কি না
-        cursor.execute("SELECT team_name FROM teams WHERE team_id=?", (t_id,))
-        team = cursor.fetchone()
-        
-        if team:
-            cursor.execute("INSERT OR REPLACE INTO team_members (user_id, team_id) VALUES (?, ?)", (message.from_user.id, t_id))
-            db.commit()
-            await message.answer(f"🤝 আপনি সফলভাবে **{team[0]}** টিমে যোগ দিয়েছেন!")
-        else:
-            await message.answer("❌ এই আইডি দিয়ে কোনো টিম পাওয়া যায়নি।")
-    except:
-        await message.answer("❌ ভুল আইডি।")
-
-# --- ৩. টিম রিপোর্ট দেখা ---
-@dp.message_handler(commands=['my_team'])
-async def my_team_report(message: types.Message):
-    cursor.execute("SELECT team_id FROM team_members WHERE user_id=?", (message.from_user.id,))
-    res = cursor.fetchone()
-    
-    if res:
-        t_id = res[0]
-        cursor.execute("SELECT team_name, leader_id FROM teams WHERE team_id=?", (t_id,))
-        t_info = cursor.fetchone()
-        
-        cursor.execute("SELECT COUNT(user_id) FROM team_members WHERE team_id=?", (t_id,))
-        count = cursor.fetchone()[0]
-        
-        text = (f"📊 **টিম রিপোর্ট: {t_info[0]}**\n"
-                f"━━━━━━━━━━━━━━━\n"
-                f"🆔 টিম আইডি: `{t_id}`\n"
-                f"👤 মেম্বার সংখ্যা: {count} জন\n"
-                f"👑 লিডার আইডি: `{t_info[1]}`\n\n"
-                f"💡 টিমের মেম্বাররা কাজ করলে লিডার কমিশন পাবেন।")
-        await message.answer(text, parse_mode="Markdown")
-    else:
-        await message.answer("❌ আপনি কোনো টিমে নেই। টিম তৈরি করতে /create_team লিখুন।")
-@dp.message_handler(lambda message: message.text == "👥 Team Work")
-async def team_work_main(message: types.Message):
-    text = (
-        "👥 **টিম ওয়ার্ক প্যানেলে আপনাকে স্বাগতম!**\n\n"
-        "এখানে আপনি নিজের টিম তৈরি করতে পারেন অথবা অন্য কারো টিমে যোগ দিতে পারেন।\n\n"
-        "💡 **টিমের সুবিধা:**\n"
-        "১. মেম্বারদের প্রতিটি কাজে লিডার কমিশন পাবেন।\n"
-        "২. টিম টার্গেট পূরণ করলে বোনাস পাওয়া যাবে।"
+    # সুন্দর করে সাজানো মেসেজ
+    status_msg = (
+        f"👤 **আপনার প্রোফাইল স্ট্যাটাস**\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🆔 **ইউজার আইডি:** `{user_id}`\n"
+        f"💰 **মোট ব্যালেন্স:** {balance} BDT\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"📁 **মোট ফাইল পাঠিয়েছেন:** {file_count} টি\n"
+        f"🆔 **সিঙ্গেল আইডি পাঠিয়েছেন:** {single_id_count} টি\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"সঠিকভাবে কাজ করুন এবং বেশি আয় করুন! 🔥"
     )
-    await message.answer(text, reply_markup=team_menu(), parse_mode="Markdown")
-    # 'Team Work' বাটনে ক্লিক করলে সাব-মেনু আসবে
-@dp.message_handler(lambda message: message.text == "👥 Team Work")
-async def team_work_main(message: types.Message):
-    text = (
-        "👥 **টিম ওয়ার্ক প্যানেলে আপনাকে স্বাগতম!**\n\n"
-        "নিচের বাটনগুলো ব্যবহার করে আপনার টিম ম্যানেজ করুন।"
-    )
-    await message.answer(text, reply_markup=team_menu(), parse_mode="Markdown")
-
-# 'Create Team' বাটন ক্লিক করলে
-@dp.message_handler(lambda message: message.text == "🏗️ Create Team")
-async def btn_create_team(message: types.Message):
-    # আপনার আগের তৈরি করা টিম খোলার ফাংশনটি এখানে কল হচ্ছে
-    await create_team_start(message) 
-
-# 'Join Team' বাটন ক্লিক করলে
-@dp.message_handler(lambda message: message.text == "🤝 Join Team")
-async def btn_join_team(message: types.Message):
-    await message.answer("🤝 টিমে যোগ দিতে আপনার লিডারের দেওয়া আইডিটি এইভাবে লিখে পাঠান:\n\n`/join_team ১২৩৪`", parse_mode="Markdown")
-
-# 'My Team' বাটন ক্লিক করলে
-@dp.message_handler(lambda message: message.text == "📊 My Team")
-async def btn_my_team(message: types.Message):
-    # আপনার আগের তৈরি করা টিম রিপোর্ট ফাংশনটি এখানে কল হচ্ছে
-    await my_team_report(message) 
+    
+    await message.answer(status_msg, parse_mode="Markdown")
     
 if __name__ == '__main__':
     keep_alive()
