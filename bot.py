@@ -57,7 +57,14 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS teams
 cursor.execute('''CREATE TABLE IF NOT EXISTS team_members 
                   (user_id INTEGER PRIMARY KEY, team_id INTEGER)''')
 db.commit()
-
+# এই লাইনগুলো ডাটাবেস সেকশনে যোগ করুন
+try:
+    cursor.execute('''ALTER TABLE teams ADD COLUMN total_earned REAL DEFAULT 0''')
+    cursor.execute('''ALTER TABLE teams ADD COLUMN current_balance REAL DEFAULT 0''')
+    db.commit()
+except:
+    pass # কলাম আগে থেকে থাকলে এরর দিবে না
+    
 class BotState(StatesGroup):
     waiting_for_file = State()
     waiting_for_address = State()
@@ -907,8 +914,7 @@ async def admin_view_all_teams(message: types.Message):
             await message.answer(response, parse_mode="Markdown")
     else:
         await message.answer("❌ এখন পর্যন্ত কোনো টিম ক্রিয়েট করা হয়নি।")
-        # --- এডমিন টিম ভিউ কমান্ড (নিখুঁত কোড) ---
-@dp.message_handler(commands=['viewteam'], user_id=ADMIN_ID)
+        @dp.message_handler(commands=['viewteam'], user_id=ADMIN_ID)
 async def admin_view_team_interface(message: types.Message):
     args = message.get_args().split()
     if not args:
@@ -916,46 +922,38 @@ async def admin_view_team_interface(message: types.Message):
     
     t_id = args[0]
     
-    # ডাটাবেস থেকে টিমের সব তথ্য আনা
-    cursor.execute("SELECT team_name, leader_id, total_earned, current_balance FROM teams WHERE team_id = ?", (t_id,))
-    team = cursor.fetchone()
+    try:
+        # ব্যালেন্স কলামগুলো না থাকলে এরর এড়াতে এই কুয়েরি
+        cursor.execute("SELECT team_name, leader_id FROM teams WHERE team_id = ?", (t_id,))
+        team = cursor.fetchone()
 
-    if team:
-        t_name, leader_id, total_earned, balance = team
+        if team:
+            t_name, leader_id = team
+            
+            cursor.execute("SELECT COUNT(*) FROM team_members WHERE team_id = ?", (t_id,))
+            member_count = cursor.fetchone()[0]
+
+            bot_info = await bot.get_me()
+            join_link = f"https://t.me/{bot_info.username}?start=join_{t_id}"
+
+            msg = (
+                f"📊 **এডমিন ভিউ: টিম ডিটেইলস**\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"👥 **টিমের নাম:** {t_name}\n"
+                f"🆔 **টিম আইডি:** `{t_id}`\n"
+                f"👑 **লিডার আইডি:** `{leader_id}`\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"👥 **মোট মেম্বার:** {member_count} জন\n"
+                f"🔗 **টিম জয়েন লিংক:**\n"
+                f"`{join_link}`\n"
+                f"━━━━━━━━━━━━━━━━━━"
+            )
+            await message.answer(msg, parse_mode="Markdown")
+        else:
+            await message.answer(f"❌ আইডি `{t_id}` দিয়ে কোনো টিম পাওয়া যায়নি।")
+    except Exception as e:
+        await message.answer(f"❌ এরর: {str(e)}")
         
-        # মেম্বার সংখ্যা বের করা
-        cursor.execute("SELECT COUNT(*) FROM team_members WHERE team_id = ?", (t_id,))
-        member_count = cursor.fetchone()[0]
-
-        bot_info = await bot.get_me()
-        join_link = f"https://t.me/{bot_info.username}?start=join_{t_id}"
-
-        # এডমিনের জন্য ইন্টারফেস তৈরি করা
-        msg = (
-            f"📊 **এডমিন ভিউ: টিম ডিটেইলস**\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"👥 **টিমের নাম:** {t_name}\n"
-            f"🆔 **টিম আইডি:** `{t_id}`\n"
-            f"👑 **লিডার আইডি:** `{leader_id}`\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"💰 **টিম ব্যালেন্স:** {balance} BDT\n"
-            f"📈 **মোট আয়:** {total_earned} BDT\n"
-            f"👥 **মোট মেম্বার:** {member_count} জন\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"🔗 **টিম জয়েন লিংক:**\n"
-            f"`{join_link}`\n"
-            f"━━━━━━━━━━━━━━━━━━"
-        )
-        
-        # মেম্বার দেখার বাটন
-        markup = types.InlineKeyboardMarkup()
-        btn_members = types.InlineKeyboardButton("👥 View Members List", callback_data=f"show_members_{t_id}")
-        markup.add(btn_members)
-
-        await message.answer(msg, reply_markup=markup, parse_mode="Markdown")
-    else:
-        await message.answer(f"❌ আইডি `{t_id}` দিয়ে কোনো টিম পাওয়া যায়নি।")
-
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
