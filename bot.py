@@ -882,7 +882,32 @@ async def admin_view_all_teams(message: types.Message):
             await message.answer(response, parse_mode="Markdown")
     else:
         await message.answer("❌ এখন পর্যন্ত কোনো টিম ক্রিয়েট করা হয়নি।")
-    
+    # --- সব টিমের লিস্ট দেখার অ্যাডমিন কমান্ড ---
+@dp.message_handler(commands=['allteams'], user_id=ADMIN_ID)
+async def admin_view_all_teams(message: types.Message):
+    # ডাটাবেসের teams টেবিল থেকে সব টিমের আইডি এবং নাম আনা
+    cursor.execute("SELECT team_id, team_name, leader_id FROM teams")
+    all_teams = cursor.fetchall()
+
+    if all_teams:
+        response = "📊 **বটের সব টিমের লিস্ট:**\n"
+        response += "━━━━━━━━━━━━━━━━━━\n"
+        
+        for index, (t_id, t_name, l_id) in enumerate(all_teams, 1):
+            response += f"{index}. 👥 **নাম:** {t_name}\n"
+            response += f"🆔 **টিম আইডি:** `{t_id}`\n"
+            response += f"👑 **লিডার আইডি:** `{l_id}`\n"
+            response += "━━━━━━━━━━━━━━━━━━\n"
+        
+        # যদি টিমের সংখ্যা অনেক বেশি হয় (টেলিগ্রামের মেসেজ লিমিট অনুযায়ী কয়েক ভাগে পাঠানো)
+        if len(response) > 4096:
+            for x in range(0, len(response), 4096):
+                await message.answer(response[x:x+4096], parse_mode="Markdown")
+        else:
+            await message.answer(response, parse_mode="Markdown")
+    else:
+        await message.answer("❌ এখন পর্যন্ত কোনো টিম ক্রিয়েট করা হয়নি।")
+                   
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
