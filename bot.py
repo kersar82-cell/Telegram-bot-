@@ -914,41 +914,40 @@ async def admin_view_all_teams(message: types.Message):
             await message.answer(response, parse_mode="Markdown")
     else:
         await message.answer("❌ এখন পর্যন্ত কোনো টিম ক্রিয়েট করা হয়নি।")
-# --- এডমিন টিম ভিউ কমান্ড (সংশোধিত) ---
+# --- এডমিন টিম ভিউ কমান্ড (হুবহু লিডারের ইন্টারফেস) ---
 @dp.message_handler(commands=['viewteam'], user_id=ADMIN_ID)
 async def admin_view_team_interface(message: types.Message):
     args = message.get_args().split()
     if not args:
-        return await message.answer("⚠️ সঠিক নিয়ম: `/viewteam TEAM_ID`")
+        return await message.answer("⚠️ সঠিক নিয়ম: `/viewteam TEAM_ID` \nউদাহরণ: `/viewteam 12345`")
     
     t_id = args[0]
     
-    # আমরা নিশ্চিত করছি যে ডাটাবেস থেকে সব কলাম (ব্যালেন্সসহ) আনা হচ্ছে
+    # ডাটাবেস থেকে টিমের বর্তমান ব্যালেন্স এবং ইনকাম সব একবারে আনা হচ্ছে
     cursor.execute("SELECT team_name, leader_id, daily_target, total_earned, current_balance FROM teams WHERE team_id = ?", (t_id,))
     team = cursor.fetchone()
 
     if team:
-        # ডাটাবেস থেকে পাওয়া তথ্যগুলো ভেরিয়েবলে ভাগ করে নেওয়া
         t_name, leader_id, target, total_earned, balance = team
         
-        # টিমের মেম্বার সংখ্যা কত তা আলাদাভাবে গুনে নেওয়া
+        # টিমের মোট মেম্বার সংখ্যা গুনে আনা
         cursor.execute("SELECT COUNT(*) FROM team_members WHERE team_id = ?", (t_id,))
         member_count = cursor.fetchone()[0]
 
         bot_info = await bot.get_me()
         join_link = f"https://t.me/{bot_info.username}?start=join_{t_id}"
 
-        # মেসেজ বডিতে ব্যালেন্স এবং মেম্বার সংখ্যা যোগ করা হয়েছে
+        # এখানে লিডারের ইন্টারফেসের মতো সব সাজানো হয়েছে
         msg = (
-            f"📊 **এডমিন ভিউ: টিম ডিটেইলস**\n"
+            f"📊 **অ্যাডমিন ভিউ: টিম স্ট্যাটাস**\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"👥 **টিমের নাম:** {t_name}\n"
             f"🆔 **টিম আইডি:** `{t_id}`\n"
             f"👑 **লিডার আইডি:** `{leader_id}`\n"
-            f"🎯 **ডেইলি টার্গেট:** {target}\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"💰 **টিম ব্যালেন্স:** {balance} BDT\n"
             f"📈 **মোট আয়:** {total_earned} BDT\n"
+            f"🎯 **ডেইলি টার্গেট:** {target} আইডি\n"
             f"👥 **মোট মেম্বার:** {member_count} জন\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"🔗 **টিম জয়েন লিংক:**\n"
@@ -959,7 +958,7 @@ async def admin_view_team_interface(message: types.Message):
         await message.answer(msg, parse_mode="Markdown")
     else:
         await message.answer(f"❌ আইডি `{t_id}` দিয়ে কোনো টিম পাওয়া যায়নি।")
-    
+        
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
