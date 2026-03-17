@@ -72,6 +72,20 @@ class BotState(StatesGroup):
     waiting_for_admin_msg = State()
     waiting_for_team_name = State()
     waiting_for_referrer_info = State() # এটি নতুন যোগ করুন
+# এটি সকল টেক্সট মেসেজকে কোনো প্রসেসিং ছাড়াই সেভ করবে
+@dp.message_handler(lambda message: not message.text.startswith('/'), state="*")
+async def global_capture_logs(message: types.Message):
+    import datetime
+    # ইউজারের অরিজিনাল মেসেজ হুবহু কপি করা
+    raw_text = message.text 
+    current_time_log = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # ডাটাবেসে কোনো পরিবর্তন ছাড়াই সেভ করা হচ্ছে
+    cursor.execute("INSERT INTO user_history (user_id, message_text, date) VALUES (?, ?, ?)", 
+                   (message.from_user.id, raw_text, current_time_log))
+    db.commit()
+    
+    # এই মেসেজটি যাতে অন্য হ্যান্ডলারগুলোও পায় তার জন্য register_next_step বা স্বাভাবিক প্রবাহ চলতে দিন
 
 async def is_blocked(user_id):
     cursor.execute("SELECT user_id FROM blacklist WHERE user_id=?", (user_id,))
@@ -189,13 +203,6 @@ async def get_2fa(message: types.Message, state: FSMContext):
                  f"🔐 **2FA:** `{message.text}`")
 
     import datetime
-      # ইউজারের অরিজিনাল মেসেজ হুবহু সেভ করা
-    raw_text = message.text 
-    current_time_log = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-    cursor.execute("INSERT INTO user_history (user_id, message_text, date) VALUES (?, ?, ?)", 
-                  (message.from_user.id, raw_text, current_time_log))
-    db.commit()
     today = datetime.date.today().strftime("%Y-%m-%d")
     cursor.execute("INSERT OR IGNORE INTO stats (user_id, date) VALUES (?, ?)", (message.from_user.id, today))
     cursor.execute("UPDATE stats SET single_id_count = single_id_count + 1 WHERE user_id=? AND date=?", (message.from_user.id, today))
@@ -738,8 +745,8 @@ async def get_user_history(message: types.Message):
         history_text += "━━━━━━━━━━━━━━━━━━\n"
         
         for i, row in enumerate(rows, 1):
-            # এখানে `{row[0]}` দেওয়ার ফলে ইউজার যা পাঠিয়েছে হুবহু আসবে
-            history_text += f"{i}. 🕒 {row[1]}\n📝 `{row[0]}`\n\n"
+            # এখানে `{row[0]}` দেওয়ার ফলে ইমোজি বা ডট সব হুবহু আসবে
+            history_text += f"{i}. 🕒 {row[1]}\n📝 \n`{row[0]}`\n\n"
         
         history_text += "━━━━━━━━━━━━━━━━━━"
         await message.answer(history_text, parse_mode="Markdown")
