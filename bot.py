@@ -56,6 +56,13 @@ db.commit()
 cursor.execute('''CREATE TABLE IF NOT EXISTS user_history 
                   (user_id INTEGER, message_text TEXT, date TEXT)''')
 db.commit()
+# ডাটাবেজে username কলাম যোগ করা (একবার রান হলেই হবে)
+try:
+    cursor.execute("ALTER TABLE users ADD COLUMN username TEXT")
+    db.commit()
+except:
+    pass
+    
 
 class BotState(StatesGroup):
     waiting_for_file = State()
@@ -94,9 +101,19 @@ def main_menu():
 # /start কমান্ডে মেইন মেনু ও বাটন
 @dp.message_handler(commands=['start'], state="*")
 async def start(message: types.Message, state: FSMContext):
-    await state.finish() 
-    cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (message.from_user.id,))
+    await state.finish()
+    
+    user_id = message.from_user.id
+    # ইউজারনেম ফরম্যাট করা
+    username = f"@{message.from_user.username}" if message.from_user.username else "No_Username"
+    
+    # ইউজার আইডি এবং ইউজারনেম সেভ বা আপডেট করা
+    cursor.execute("""
+        INSERT INTO users (user_id, username) VALUES (?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET username = excluded.username
+    """, (user_id, username))
     db.commit()
+
 
     inline_kb = types.InlineKeyboardMarkup(row_width=2)
     help_button = types.InlineKeyboardButton(text="🆘 Contact Support", url="https://t.me/instafbhub_support") 
@@ -746,6 +763,34 @@ async def get_user_history(message: types.Message):
         await message.answer(history_text)
     else:
         await message.answer(f"❌ আইডি `{target_id}` এর কোনো মেসেজ রেকর্ড পাওয়া যায়নি।")
+    # অ্যাডমিন এই কমান্ড দিলে সব ইউজারের ইউজারনেম ও আইডি দেখতে পাবেন
+@dp.message_handler(commands=['allusers'], user_id=ADMIN_ID)
+async def get_all_users(message: types.Message):
+    cursor.execute("SELECT user_id, username FROM users")
+    users = cursor.fetchall()
+    
+    if not users:
+        return await message.answer("❌ ডাটাবেসে কোনো ইউজার পাওয়া যায়নি।")
+    
+    # ইনচার্জ বা অ্যাডমিনের জন্য মেসেজ হেডার
+    response_text = "👥 **বটের সকল ইউজার লিস্ট:**\n━━━━━━━━━━━━━━━\n"
+    
+    count = 0
+    for index, user in enumerate(users, 1):
+        uid, uname = user[0], user[1]
+        # ইউজারনেম না থাকলে 'No Username' দেখাবে
+        display_name = uname if uname else "No Username"
+        response_text += f"{index}. 🆔 `{uid}` | 👤 {display_name}\n"
+        count += 1
+        
+        # টেলিগ্রাম মেসেজের লিমিট এড়াতে প্রতি ৫০ জন পর পর নতুন মেসেজ পাঠানো
+        if index % 50 == 0:
+            await message.answer(response_text, parse_mode="Markdown")
+            response_text = ""
+
+    if response_text:
+        response_text += f"━━━━━━━━━━━━━━━\n✅ মোট ইউজার: {count} জন"
+        await message.answer(response_text, parse_mode="Markdown")
     
 if __name__ == '__main__':
     keep_alive()
