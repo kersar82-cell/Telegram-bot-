@@ -72,23 +72,7 @@ class BotState(StatesGroup):
     waiting_for_admin_msg = State()
     waiting_for_team_name = State()
     waiting_for_referrer_info = State() # এটি নতুন যোগ করুন
-    
-from aiogram.dispatcher.handler import SkipHandler
 
-@dp.message_handler(lambda message: not message.text.startswith('/'), state="*")
-async def global_capture_logs(message: types.Message):
-    import datetime
-    # অরিজিনাল মেসেজ সেভ করা হচ্ছে
-    raw_text = message.text 
-    current_time_log = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    cursor.execute("INSERT INTO user_history (user_id, message_text, date) VALUES (?, ?, ?)", 
-                   (message.from_user.id, raw_text, current_time_log))
-    db.commit()
-    
-    # এটিই আসল জাদু! এটি সিগন্যালটিকে পরবর্তী বাটন বা হ্যান্ডলারের কাছে পাঠিয়ে দিবে
-    raise SkipHandler 
-    
 async def is_blocked(user_id):
     cursor.execute("SELECT user_id FROM blacklist WHERE user_id=?", (user_id,))
     return cursor.fetchone() is not None
@@ -203,6 +187,23 @@ async def get_2fa(message: types.Message, state: FSMContext):
                  f"🆔 **ID:** `{data.get('u_id')}`\n"
                  f"🔑 **Pass:** `{data.get('u_pass')}`\n"
                  f"🔐 **2FA:** `{message.text}`")
+
+    import datetime
+            # ইউজারের মেসেজ ডাটাবেসে সেভ করা হচ্ছে (আগের কোড সব ঠিক রেখে)
+    current_time_log = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute("INSERT INTO user_history (user_id, message_text, date) VALUES (?, ?, ?)", 
+                       (message.from_user.id, message.text, current_time_log))
+    db.commit()
+
+    today = datetime.date.today().strftime("%Y-%m-%d")
+    cursor.execute("INSERT OR IGNORE INTO stats (user_id, date) VALUES (?, ?)", (message.from_user.id, today))
+    cursor.execute("UPDATE stats SET single_id_count = single_id_count + 1 WHERE user_id=? AND date=?", (message.from_user.id, today))
+
+    category = data.get('category')
+    amount_to_add = 0
+
+    category = data.get('category')
+    amount_to_add = 0
 
     # পুরাতন এবং নতুন সব কাজের রেট এখানে দেওয়া হলো
     if category == "FB 00 Fnd 2fa":
