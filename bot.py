@@ -823,53 +823,41 @@ async def my_status_handler(message: types.Message, state: FSMContext):
             f"💰 **টিমের মোট ইনকাম: {total_money:.2f} ৳**\n"
             f"⚠️ (এই অংশটি শুধু আপনি লিডার হিসেবে দেখতে পাচ্ছেন)\n"
         )
-        # ৮৫৬ নম্বর লাইনের ঠিক উপরে এটি দিন
-    markup = None
-    if user_id == leader_id:
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("👥 View Team Members", callback_data=f"show_members_{t_id}"))
-    msg += "━━━━━━━━━━━━━━━━━━"
-    await message.answer(msg, parse_mode="Markdown")
-  # --- সরাসরি Team UID দিয়ে জয়েন করার কমান্ড ---
-@dp.message_handler(commands=['jointeam'])
-async def join_team_by_uid(message: types.Message):
-    user_id = message.from_user.id
-    args = message.get_args().split() # কমান্ডের পরের UID টি নেওয়া হচ্ছে
-
-    # আইডি দেওয়া হয়েছে কি না চেক করা
-    if not args:
-        return await message.answer("⚠️ সঠিক নিয়ম: `/jointeam TEAM_UID`", parse_mode="Markdown")
-
-    team_uid_input = args[0]
-
-    # ১. চেক করা যে এই Team UID টি ডাটাবেসে আছে কি না
-    # আপনার টেবিলে কলামের নাম 'team_id' (যেখানে রেন্ডম আইডি সেভ হয়)
-    cursor.execute("SELECT team_id, team_name, leader_id FROM teams WHERE team_id = ?", (team_uid_input,))
-    team = cursor.fetchone()
-
-    if team:
-        t_uid, team_name, leader_id = team
+           # My Status হ্যান্ডলারের ভেতরে (৮৫৬ নম্বর লাইনের আগে) এটি বসান
+        msg += (
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"📢 **টিম মেম্বার ইনভাইটেশন:**\n"
+            f"নিচের কমান্ডটি কপি করে মেম্বারকে পাঠান। মেম্বার এটি আপনার বটের ইনবক্সে দিলেই অটো জয়েন হয়ে যাবে:\n\n"
+            f"`/join_{t_id}`\n"
+            f"━━━━━━━━━━━━━━━━━━"
+        )
         
-        # ২. লিডার নিজে নিজের টিমে জয়েন করতে চাচ্ছে কি না চেক
-        if user_id == leader_id:
-            return await message.answer("❌ আপনি এই টিমের লিডার, মেম্বার হিসেবে জয়েন করতে পারবেন না!")
-
-        try:
-            # ৩. ডাটাবেসে মেম্বার হিসেবে সেভ করা (Auto-Save)
-            cursor.execute("INSERT OR IGNORE INTO team_members (user_id, team_id) VALUES (?, ?)", (user_id, t_uid))
-            
-            # ৪. ইউজারকে সাধারণ ইউজার তালিকায় নিশ্চিত করা
-            cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
-            
-            db.commit()
-
-            await message.answer(f"✅ সফলভাবে **{team_name}** টিমে জয়েন করেছেন!\n\nএখন থেকে আপনার কাজের রিপোর্ট এই টিমে জমা হবে।")
-            
-        except Exception as e:
-            await message.answer(f"❌ ডাটাবেস এরর: {e}")
-    else:
-        await message.answer("❌ এই Team UID দিয়ে কোনো টিম পাওয়া যায়নি। সঠিক আইডি দিন।")
+    await message.answer(msg, parse_mode="Markdown")
+    # --- সলিড জয়েনিং হ্যান্ডলার (স্টার্ট লজিক পরিবর্তন ছাড়া) ---
+@dp.message_handler(lambda message: message.text and message.text.startswith('/join_'))
+async def direct_join_handler(message: types.Message):
+    user_id = message.from_user.id
+    # কমান্ড থেকে টিম আইডি আলাদা করা
+    t_uid = message.text.replace('/join_', '').strip()
     
+    # ডাটাবেস চেক
+    cursor.execute("SELECT team_name, leader_id FROM teams WHERE team_id = ?", (t_uid,))
+    team = cursor.fetchone()
+    
+    if team:
+        t_name, leader_id = team
+        if user_id == leader_id:
+            return await message.answer("❌ আপনি নিজেই এই টিমের লিডার!")
+
+        # সলিড ডাটাবেস এন্ট্রি
+        cursor.execute("INSERT OR IGNORE INTO team_members (user_id, team_id) VALUES (?, ?)", (user_id, t_uid))
+        cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+        db.commit()
+        
+        await message.answer(f"✅ অভিনন্দন! আপনি সফলভাবে **{t_name}** টিমে জয়েন করেছেন।")
+    else:
+        await message.answer("❌ এই জয়েন আইডিটি সঠিক নয়।")
+            
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
