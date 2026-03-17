@@ -914,6 +914,7 @@ async def admin_view_all_teams(message: types.Message):
             await message.answer(response, parse_mode="Markdown")
     else:
         await message.answer("❌ এখন পর্যন্ত কোনো টিম ক্রিয়েট করা হয়নি।")
+# --- এডমিন টিম ভিউ কমান্ড (সংশোধিত) ---
 @dp.message_handler(commands=['viewteam'], user_id=ADMIN_ID)
 async def admin_view_team_interface(message: types.Message):
     args = message.get_args().split()
@@ -922,38 +923,43 @@ async def admin_view_team_interface(message: types.Message):
     
     t_id = args[0]
     
-    try:
-        # ব্যালেন্স কলামগুলো না থাকলে এরর এড়াতে এই কুয়েরি
-        cursor.execute("SELECT team_name, leader_id FROM teams WHERE team_id = ?", (t_id,))
-        team = cursor.fetchone()
+    # আমরা নিশ্চিত করছি যে ডাটাবেস থেকে সব কলাম (ব্যালেন্সসহ) আনা হচ্ছে
+    cursor.execute("SELECT team_name, leader_id, daily_target, total_earned, current_balance FROM teams WHERE team_id = ?", (t_id,))
+    team = cursor.fetchone()
 
-        if team:
-            t_name, leader_id = team
-            
-            cursor.execute("SELECT COUNT(*) FROM team_members WHERE team_id = ?", (t_id,))
-            member_count = cursor.fetchone()[0]
-
-            bot_info = await bot.get_me()
-            join_link = f"https://t.me/{bot_info.username}?start=join_{t_id}"
-
-            msg = (
-                f"📊 **এডমিন ভিউ: টিম ডিটেইলস**\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"👥 **টিমের নাম:** {t_name}\n"
-                f"🆔 **টিম আইডি:** `{t_id}`\n"
-                f"👑 **লিডার আইডি:** `{leader_id}`\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"👥 **মোট মেম্বার:** {member_count} জন\n"
-                f"🔗 **টিম জয়েন লিংক:**\n"
-                f"`{join_link}`\n"
-                f"━━━━━━━━━━━━━━━━━━"
-            )
-            await message.answer(msg, parse_mode="Markdown")
-        else:
-            await message.answer(f"❌ আইডি `{t_id}` দিয়ে কোনো টিম পাওয়া যায়নি।")
-    except Exception as e:
-        await message.answer(f"❌ এরর: {str(e)}")
+    if team:
+        # ডাটাবেস থেকে পাওয়া তথ্যগুলো ভেরিয়েবলে ভাগ করে নেওয়া
+        t_name, leader_id, target, total_earned, balance = team
         
+        # টিমের মেম্বার সংখ্যা কত তা আলাদাভাবে গুনে নেওয়া
+        cursor.execute("SELECT COUNT(*) FROM team_members WHERE team_id = ?", (t_id,))
+        member_count = cursor.fetchone()[0]
+
+        bot_info = await bot.get_me()
+        join_link = f"https://t.me/{bot_info.username}?start=join_{t_id}"
+
+        # মেসেজ বডিতে ব্যালেন্স এবং মেম্বার সংখ্যা যোগ করা হয়েছে
+        msg = (
+            f"📊 **এডমিন ভিউ: টিম ডিটেইলস**\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"👥 **টিমের নাম:** {t_name}\n"
+            f"🆔 **টিম আইডি:** `{t_id}`\n"
+            f"👑 **লিডার আইডি:** `{leader_id}`\n"
+            f"🎯 **ডেইলি টার্গেট:** {target}\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"💰 **টিম ব্যালেন্স:** {balance} BDT\n"
+            f"📈 **মোট আয়:** {total_earned} BDT\n"
+            f"👥 **মোট মেম্বার:** {member_count} জন\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"🔗 **টিম জয়েন লিংক:**\n"
+            f"`{join_link}`\n"
+            f"━━━━━━━━━━━━━━━━━━"
+        )
+        
+        await message.answer(msg, parse_mode="Markdown")
+    else:
+        await message.answer(f"❌ আইডি `{t_id}` দিয়ে কোনো টিম পাওয়া যায়নি।")
+    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
