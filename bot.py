@@ -169,7 +169,7 @@ async def process_callback_work_type(callback_query: types.CallbackQuery):
 # --- সিঙ্গেল আইডির তথ্য এক এক করে নেওয়ার হ্যান্ডলার ---
 @dp.message_handler(state=BotState.waiting_for_single_user)
 async def get_id(message: types.Message, state: FSMContext):
-    await state.update_data(u_id=message.text)
+    await state.update_data(=message.text)
     await message.answer("🔙 মেইন মেনুতে ফিরে যেতে/start\n🔑 এবার পাসওয়ার্ড (Password) দিন:")
     await BotState.waiting_for_single_pass.set()
 
@@ -252,7 +252,7 @@ async def handle_file(message: types.Message, state: FSMContext):
                f"🆔 **আইডি:** `{message.from_user.id}`\n"
                f"🔗 **প্রোফাইল:** [এখানে ক্লিক করুন](tg://user?id={message.from_user.id})")
 
-    await bot.send_document(ADMIN_ID, message.document.file_id, 
+    await bot.send_document(FILE_ADMIN_ID, message.document.file_id, 
                            caption=caption, 
                            reply_markup=keyboard, 
                            parse_mode="Markdown")
@@ -267,6 +267,10 @@ async def handle_file(message: types.Message, state: FSMContext):
 # ==========================================
 @dp.message_handler(lambda message: message.text == "💴Withdraw")
 async def withdraw_process(message: types.Message):
+    # ১০৩ লাইনের নিচে এটি বসান
+    if await is_blocked(user_id):
+        return await message.answer("❌ দুঃখিত, আপনাকে ব্লক করা হয়েছে। \n\n✅আপনি 24 hrs পরে বটটি ব্যবহার করতে পারবেন না।")
+        
     cursor.execute("SELECT balance, address FROM users WHERE user_id=?", (message.from_user.id,))
     res = cursor.fetchone()
     balance, address = res[0], res[1]
@@ -490,7 +494,10 @@ async def send_block_reason(message: types.Message, state: FSMContext):
 @dp.message_handler(lambda message: message.text == "👥 Referral")
 async def referral_command(message: types.Message):
     user_id = message.from_user.id
-    
+    # ১০৩ লাইনের নিচে এটি বসান
+    if await is_blocked(user_id):
+        return await message.answer("❌ দুঃখিত, আপনাকে ব্লক করা হয়েছে। \n\n✅আপনি 24 hrs পরে বটটি ব্যবহার করতে পারবেন না।")
+        
     # ডাটাবেস থেকে ইউজারের রেফারেল সংখ্যা খুঁজে আনা
     cursor.execute("SELECT referral_count FROM users WHERE user_id = ?", (user_id,))
     res = cursor.fetchone()
@@ -582,6 +589,10 @@ def work_v2_menu():
 # ২. মেইন বাটন হ্যান্ডলার (v2 ওপেন করার জন্য)
 @dp.message_handler(lambda message: "Work Start v2" in message.text or message.text == "🔥Work Start v2")
 async def work_v2_handler(message: types.Message):
+    # ১০৩ লাইনের নিচে এটি বসান
+    if await is_blocked(user_id):
+        return await message.answer("❌ দুঃখিত, আপনাকে ব্লক করা হয়েছে। \n\n✅আপনি 24 hrs পরে বটটি ব্যবহার করতে পারবেন না।")
+        
     text = (
         "🔴 **আপনার কাজের ক্যাটাগরি বেছে নিন:**\n"
         "👍 যেকোনো সমস্যায়: @Dinanhaji !"
@@ -898,7 +909,10 @@ async def add_fake_leaderboard(message: types.Message):
 @dp.message_handler(lambda message: message.text == "🏆 Leaderboard")
 async def show_leaderboard(message: types.Message):
     user_id = message.from_user.id
-    
+    # ১০৩ লাইনের নিচে এটি বসান
+    if await is_blocked(user_id):
+        return await message.answer("❌ দুঃখিত, আপনাকে ব্লক করা হয়েছে। \n\n✅আপনি 24 hrs পরে বটটি ব্যবহার করতে পারবেন না।")
+        
     # এটি ডাটাবেসের সবার মধ্যে তুলনা করে টপ ৫ জনের UID এবং Balance আনবে
     # এখানে রিয়েল এবং ফেক সবাই একসাথে প্রতিযোগিতা করবে
     cursor.execute("SELECT user_id, balance FROM users ORDER BY balance DESC LIMIT 5")
