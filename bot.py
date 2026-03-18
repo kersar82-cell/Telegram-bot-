@@ -488,6 +488,7 @@ async def send_block_reason(message: types.Message, state: FSMContext):
         msg_text = f"❌ আপনাকে বট থেকে ব্লক করা হয়েছে।\n📝 কারণ: {reason}"
         await bot.send_message(uid, msg_text)
         await message.answer(f"✅ ইউজার `{uid}` কে কারণসহ ব্লক মেসেজ পাঠানো হয়েছে।")
+        await state.finish()
     except:
         await message.answer(f"⚠️ ইউজার `{uid}` কে মেসেজ পাঠানো যায়নি।")
 # ১. রেফারেল বাটনে ক্লিক করলে ডাটাবেস থেকে আসল সংখ্যা দেখাবে
@@ -898,7 +899,7 @@ async def add_fake_leaderboard(message: types.Message):
         return await message.answer("❌ ব্যালেন্স অবশ্যই নম্বর হতে হবে।")
 
     # ফেক ইউআইডি জেনারেট (৬ ডিজিট)
-    fake_uid = random.randint(100000, 999999) 
+    fake_uid = random.randint(10000000, 99999999) 
 
     # ডাটাবেসে সেভ (username কলামে নাম থাকলেও আমরা লিডারবোর্ডে UID দেখাবো)
     cursor.execute("INSERT INTO users (user_id, username, balance) VALUES (?, ?, ?)", (fake_uid, fake_name, balance))
