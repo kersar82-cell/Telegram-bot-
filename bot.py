@@ -534,7 +534,7 @@ async def referral_command(message: types.Message):
     user_id = message.from_user.id
         # ৩০৮ নম্বর লাইনের ঠিক নিচে এটি বসান
     if await is_blocked(message.from_user.id):
-        return await message.answer("❌ আপনি ব্লকড! আপনি টাকা তুলতে পারবেন না।")
+        return await message.answer("❌ আপনি ব্লকড!")
     
     # ডাটাবেস থেকে ইউজারের রেফারেল সংখ্যা খুঁজে আনা
     cursor.execute("SELECT referral_count FROM users WHERE user_id = ?", (user_id,))
@@ -606,7 +606,7 @@ async def admin_edit_referral(message: types.Message):
 async def support_message(message: types.Message):
        # ৩০৮ নম্বর লাইনের ঠিক নিচে এটি বসান
     if await is_blocked(message.from_user.id):
-        return await message.answer("❌ আপনি ব্লকড! আপনি টাকা তুলতে পারবেন না।")
+        return await message.answer("❌ আপনি ব্লকড !")
         
     # এখানে [শব্দ](লিঙ্ক) এই ফরম্যাটে হাইপারলিঙ্ক সেট করা হয়েছে
     text = (
@@ -633,7 +633,7 @@ def work_v2_menu():
 async def work_v2_handler(message: types.Message):
        # ৩০৮ নম্বর লাইনের ঠিক নিচে এটি বসান
     if await is_blocked(message.from_user.id):
-        return await message.answer("❌ আপনি ব্লকড! আপনি টাকা তুলতে পারবেন না।")
+        return await message.answer("❌ আপনি ব্লকড !")
         
     text = (
         "🔴 **আপনার কাজের ক্যাটাগরি বেছে নিন:**\n"
@@ -701,6 +701,10 @@ def rules_price_menu():
 # --- ২. মেইন বাটন হ্যান্ডলার ---
 @dp.message_handler(lambda message: message.text == "🔴Rules & Price")
 async def rules_price_handler(message: types.Message):
+        # ১০৩ লাইনের নিচে এটি বসান
+    if await is_blocked(user_id):
+        return await message.answer("❌ দুঃখিত, আপনাকে ব্লক করা হয়েছে।")
+        
     await message.answer(
         "👉 যে ক্যাটাগরির নিয়ম এবং রেট জানতে চান,\n\n👇 নিচের বাটন থেকে সেটি সিলেক্ট করুন:",
         reply_markup=rules_price_menu()
