@@ -266,6 +266,8 @@ async def handle_file(message: types.Message, state: FSMContext):
 async def withdraw_process(message: types.Message):
     # ইউজার আইডি নেওয়া হলো
     u_id = message.from_user.id 
+    if await is_blocked(message.from_user.id):
+        return await message.answer("❌ দুঃখিত, আপনি ব্লকড! আপনি আর কাজ জমা দিতে পারবেন না। /nএডমিনের সাথে কথা বলুন 👍")
     
     # ডাটাবেস থেকে তথ্য আনা (সঠিক স্পেসিং সহ)
     cursor.execute("SELECT balance, address FROM users WHERE user_id=?", (u_id,))
