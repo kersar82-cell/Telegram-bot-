@@ -444,3 +444,347 @@ async def admin_search(message: types.Message):
         
         if user:
             import datetime
+today = datetime.date.today().strftime("%Y-%m-%d")
+            # আজকের কাজের হিসাব
+            cursor.execute("SELECT file_count, single_id_count FROM stats WHERE user_id=? AND date=?", (target_id, today))
+            s = cursor.fetchone() or (0, 0)
+            
+            text = (f"👤 **ইউজার রিপোর্ট (ID: `{target_id}`)**\n\n"
+                    f"💵 ব্যালেন্স: {user[0]} টাকা\n"
+                    f"💳 পেমেন্ট মেথড: `{user[1] or 'নেই'}`\n"
+                    f"📊 আজ জমা দিয়েছে:\n"
+                    f"📁 ফাইল: {s[0]} টি\n"
+                    f"👤 সিঙ্গেল আইডি: {s[1]} টি")
+            await message.answer(text, parse_mode="Markdown")
+        else:
+            await message.answer("❌ ডাটাবেসে এই ইউজার পাওয়া যায়নি।")
+    except ValueError:
+        await message.answer("❌ আইডি শুধুমাত্র সংখ্যা হতে হবে।")
+        # ১. কমান্ড দিয়ে ব্লক করা: /block 12345678
+@dp.message_handler(commands=['block'], user_id=ADMIN_ID)
+@dp.message_handler(commands=['block'], user_id=ADMIN_ID)
+async def admin_block(message: types.Message, state: FSMContext):
+    try:
+        # কমান্ড থেকে ইউজার আইডি নেওয়া
+        uid = int(message.get_args())
+        
+        # ডাটাবেসে ব্লক হিসেবে সেভ করা
+        cursor.execute("INSERT OR IGNORE INTO blacklist (user_id) VALUES (?)", (uid,))
+        db.commit()
+        
+        # কারণ পাঠানোর জন্য আইডিটি সাময়িকভাবে সেভ রাখা
+        await state.update_data(blocking_user_id=uid)
+        
+        await message.answer(f"🚫 ইউজার `{uid}` ব্লক করা হয়েছে।\nএখন ব্লক করার কারণটি লিখে পাঠান:")
+        
+        # কারণ নেওয়ার জন্য স্টেট সেট করা
+        await BotState.waiting_for_block_reason.set()
+        
+    except:
+        await message.answer("⚠️ সঠিক ফরম্যাট: `/block ইউজার_আইডি` লিখুন।")
+
+# ২. কমান্ড দিয়ে আনব্লক করা: /unblock 12345678
+@dp.message_handler(commands=['unblock'], user_id=ADMIN_ID)
+async def admin_unblock(message: types.Message):
+    try:
+        uid = int(message.get_args())
+        cursor.execute("DELETE FROM blacklist WHERE user_id=?", (uid,))
+        db.commit()
+        await message.answer(f"✅ ইউজার `{uid}` এখন আনব্লক।")
+        await bot.send_message(uid, "✅ আপনাকে আনব্লক করা হয়েছে।\nআর ভুল করবেন না❌")
+        
+    except: await message.answer("সঠিক ফরম্যাট: `/unblock আইডি`")
+@dp.callback_query_handler(lambda c: c.data.startswith('block_'), user_id=ADMIN_ID)
+async def block_callback(call: types.CallbackQuery, state: FSMContext):
+    uid = int(call.data.split('_')[1])
+    # ডাটাবেসে ব্লক করা
+    cursor.execute("INSERT OR IGNORE INTO blacklist (user_id) VALUES (?)", (uid,))
+    db.commit()
+    
+    # ইউজার আইডি সেভ রাখা
+    await state.update_data(blocking_user_id=uid)
+    
+    await call.message.answer(f"🚫 ইউজার `{uid}` ব্লকড।\nএখন ব্লক করার কারণটি লিখে পাঠান:")
+    await BotState.waiting_for_block_reason.set()
+    await call.answer()
+    
+@dp.message_handler(state=BotState.waiting_for_block_reason, user_id=ADMIN_ID)
+async def send_block_reason(message: types.Message, state: FSMContext):
+    # সেভ করা আইডিটি ফিরিয়ে আনা
+    data = await state.get_data()
+    uid = data.get('blocking_user_id')
+    reason = message.text # আপনি যা লিখে পাঠাবেন
+    
+    try:
+        # ইউজারের কাছে কারণসহ মেসেজ পাঠানো
+        msg_text = f"❌ আপনাকে বট থেকে ব্লক করা হয়েছে।\n📝 কারণ: {reason}"
+        await bot.send_message(uid, msg_text)
+        await message.answer(f"✅ ইউজার `{uid}` কে কারণসহ ব্লক মেসেজ পাঠানো হয়েছে।")
+    except:
+        await message.answer(f"⚠️ ইউজার `{uid}` কে মেসেজ পাঠানো যায়নি।")
+# ১. রেফারেল বাটনে ক্লিক করলে ডাটাবেস থেকে আসল সংখ্যা দেখাবে
+@dp.message_handler(lambda message: message.text == "👥 Referral")
+async def referral_command(message: types.Message):
+    user_id = message.from_user.id
+    
+    # ডাটাবেস থেকে ইউজারের রেফারেল সংখ্যা খুঁজে আনা
+    cursor.execute("SELECT referral_count FROM users WHERE user_id = ?", (user_id,))
+    res = cursor.fetchone()
+    
+    # যদি ডাটাবেসে তথ্য না থাকে তবে ০ দেখাবে
+    ref_count = res[0] if res and res[0] is not None else 0
+    
+    bot_info = await bot.get_me()
+    refer_link = f"https://t.me/{bot_info.username}?start={user_id}"
+    
+    # আপনার স্ক্রিনশটের ডিজাইন অনুযায়ী মেসেজ
+    text = (f"👥 **আপনার মোট রেফারেল:** {ref_count} জন\n"
+            f"🔗 **আপনার লিঙ্ক:** `{refer_link}`\n\n"
+            f".......📮**Attention**.......\n\n"
+            f"🔴 প্রত্যেক রেফারের জন্য ৫ টাকা পাবেন।\n"
+            f"🚨 👀 ওই টাকা তখনই পাবেন যখন ওই ইউজার ৫০ টাকার উপরে ব্যালেন্স করবে।\n"
+            f"🔥 আপনি কার মাধ্যমে এই বটে এসেছেন?\n\n\n"
+            f"💣 তার Username অথবা User ID লিখে নিচে পাঠান\n...↓↓↓↓নইতো /start দিন")
+    
+    await message.answer(text, parse_mode="Markdown")
+    # ইউজারের ইনপুট নেওয়ার জন্য স্টেট সেট করা
+    await BotState.waiting_for_referrer_info.set()
+
+# ২. ইউজার যখন রেফারারের তথ্য লিখে পাঠাবে (ইনপুট হ্যান্ডলার)
+@dp.message_handler(state=BotState.waiting_for_referrer_info)
+async def process_referral_info(message: types.Message, state: FSMContext):
+    referrer_detail = message.text # ইউজার যা লিখে পাঠাবে বট তা গ্রহণ করবে
+    sender_name = message.from_user.full_name
+    sender_id = message.from_user.id
+    
+    # অ্যাডমিনকে নোটিফিকেশন পাঠানো
+    admin_msg = (f"📢 **নতুন রেফারেল রিপোর্ট!**\n\n"
+                 f"👤 **প্রেরক:** {sender_name}\n"
+                 f"🆔 **আইডি:** `{sender_id}`\n"
+                 f"━━━━━━━━━━━━━━━\n"
+                 f"📝 **যার মাধ্যমে এসেছে:** {referrer_detail}")
+    
+    try:
+        await bot.send_message(ADMIN_ID, admin_msg, parse_mode="Markdown")
+    except:
+        pass
+        
+    success_text = ("🚨 এক আইডি দিয়ে বার বার রেফার করলে আপনাকে\n এবং ওই আইডিকে টেলিগ্রাম থেকে ব্লক করা হবে!\n\n"
+                    "🟢 আপনার রেফারেল রিসিভ করা হয়েছে।\n"
+                    "👌 ধন্যবাদ")
+    
+    await message.answer(success_text, reply_markup=main_menu())
+    await state.finish()
+@dp.message_handler(commands=['edit_ref'], user_id=ADMIN_ID)
+async def admin_edit_referral(message: types.Message):
+    try:
+        args = message.get_args().split()
+        if len(args) < 2:
+            return await message.answer("⚠️ ফরম্যাট: `/edit_ref আইডি সংখ্যা`")
+        
+        target_id, new_count = int(args[0]), int(args[1])
+        cursor.execute("UPDATE users SET referral_count = ? WHERE user_id = ?", (new_count, target_id))
+        db.commit()
+        
+        await message.answer(f"✅ ইউজার `{target_id}` এর রেফারেল সংখ্যা আপডেট করে `{new_count}` করা হয়েছে।")
+        try:
+            await bot.send_message(target_id, f"📢 আপনার মোট রেফারেল সংখ্যা আপডেট করা হয়েছে।\nবর্তমান রেফারেল: {new_count} জন।")
+        except: pass
+    except:
+        await message.answer("❌ ভুল আইডি বা সংখ্যা।")
+    # 'Support' বাটনে ক্লিক করলে যা শো করবে (হাইপারলিঙ্ক সহ)
+@dp.message_handler(lambda message: message.text == "🧑‍💻Support")
+async def support_message(message: types.Message):
+    # এখানে [শব্দ](লিঙ্ক) এই ফরম্যাটে হাইপারলিঙ্ক সেট করা হয়েছে
+    text = (
+        "👋 **হ্যালো! আমাদের সাপোর্ট সেন্টারে আপনাকে স্বাগতম।**\n\n"
+        "যেকোনো সমস্যা বা তথ্যের জন্য নিচে ক্লিক করুন:\n\n"
+        "🎥 **Bot Setup:** [VIDEO](ht)\n"
+        "📢 **আপডেট গ্রুপ:** [Join Channel](https://t.me/instafbhub)\n"
+        "🛠 **হেল্প সাপোর্ট:** [Contact Support](https://t.me/INSTAFB_SUPPORT)\n\n"
+        "✅আমরা আপনাকে দ্রুত সাহায্য করার চেষ্টা করব। ধন্যবাদ!"
+    )
+    
+    # parse_mode="Markdown" অবশ্যই থাকতে হবে নাহলে লিঙ্ক কাজ করবে না
+    await message.answer(text, parse_mode="Markdown", disable_web_page_preview=True)
+
+# ১. মেনু বাটন ফাংশন (নিশ্চিত করুন নামটি সঠিক)
+def work_v2_menu():
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add("FB 00 Fnd 2fa", "IG Cookies") 
+    keyboard.add("🔄 রিফ্রেশ") 
+    return keyboard
+
+# ২. মেইন বাটন হ্যান্ডলার (v2 ওপেন করার জন্য)
+@dp.message_handler(lambda message: "Work Start v2" in message.text or message.text == "🔥Work Start v2")
+async def work_v2_handler(message: types.Message):
+    text = (
+        "🔴 **আপনার কাজের ক্যাটাগরি বেছে নিন:**\n"
+        "👍 যেকোনো সমস্যায়: @Dinanhaji !"
+    )
+    await message.answer(text, reply_markup=work_v2_menu(), parse_mode="Markdown")
+
+# ৩. ক্যাটাগরি সিলেক্ট করার হ্যান্ডলার
+# ৩. ক্যাটাগরি সিলেক্ট করার হ্যান্ডলার
+@dp.message_handler(lambda message: message.text in ["FB 00 Fnd 2fa", "IG Cookies"])
+async def work_v2_options(message: types.Message, state: FSMContext):
+    await state.update_data(category=message.text)
+    
+    # ইনলাইন কিবোর্ড তৈরি (row_width সেট করা হয়েছে যাতে বাটনগুলো সাজানো থাকে)
+    inline_kb = types.InlineKeyboardMarkup(row_width=2)
+        # সাধারণ ফাইল এবং সিঙ্গেল আইডি বাটন
+    btn_file = types.InlineKeyboardButton("📁 File", callback_data="type_file")
+    btn_single = types.InlineKeyboardButton("🆔 Single ID", callback_data="type_single")
+    
+    # শর্ত: শুধুমাত্র IG Cookies হলে নতুন বাটনটি যোগ হবে
+    if message.text == "IG Cookies":
+        # এখানে 'your_link' এর জায়গায় আপনার আসল টেলিগ্রাম লিংক দিন
+        btn_submit_link = types.InlineKeyboardButton("🔗 Submit Link", url="https://t.me/instafbhub/80")
+        inline_kb.add(btn_file, btn_single) # প্রথম সারিতে দুই বাটন
+        inline_kb.add(btn_submit_link)      # তার নিচে বড় সাবমিট বাটন
+    else:
+        inline_kb.add(btn_file, btn_single) # অন্য ক্যাটাগরিতে শুধু এই দুটি থাকবে
+    
+    msg_text = (
+        f"✅ আপনি বেছে নিয়েছেন: **{message.text}**\n"
+        "━━━━━━━━━━━━━━━\n"
+        "এখন কিভাবে ডাটা জমা দিতে চান? নিচের বাটন থেকে সিলেক্ট করুন।"
+    )
+    
+    await message.answer(msg_text, reply_markup=inline_kb, parse_mode="Markdown")
+                      
+#মেসেজ
+@dp.message_handler(commands=['msg'], user_id=ADMIN_ID)
+async def admin_direct_msg(message: types.Message):
+    try:
+        # কমান্ড থেকে আইডি এবং মেসেজ আলাদা করা
+        args = message.get_args().split(maxsplit=1)
+        if len(args) < 2:
+            return await message.answer("⚠️ সঠিক ফরম্যাট: `/msg আইডি মেসেজ`")
+        
+        target_id = int(args[0])
+        text_to_send = args[1]
+        
+        # ইউজারের কাছে মেসেজ পাঠানো
+        await bot.send_message(target_id, f"📩 **অ্যাডমিনের কাছ থেকে মেসেজ:**\n\n{text_to_send}")
+        await message.answer(f"✅ ইউজার `{target_id}` কে মেসেজ পাঠানো হয়েছে।")
+        
+    except Exception as e:
+        await message.answer(f"❌ মেসেজ পাঠানো যায়নি। ভুল আইডি বা ইউজার বটটি ব্লক করে রেখেছে।")
+
+
+# --- ১. কিবোর্ড ফাংশন (এটি লাইনের শুরুতে থাকবে) ---
+def rules_price_menu():
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add("IG 2fa Rules", "IG Cookies Rules")
+    keyboard.add("Ig mother account Rules", "Fb 00 fnd 2fa Rules")
+    keyboard.add("🔄 রিফ্রেশ") 
+    return keyboard
+
+# --- ২. মেইন বাটন হ্যান্ডলার ---
+@dp.message_handler(lambda message: message.text == "🔴Rules & Price")
+async def rules_price_handler(message: types.Message):
+    await message.answer(
+        "👉 যে ক্যাটাগরির নিয়ম এবং রেট জানতে চান,\n\n👇 নিচের বাটন থেকে সেটি সিলেক্ট করুন:",
+        reply_markup=rules_price_menu()
+    )
+
+# --- ৩. রুলস মেসেজ হ্যান্ডলার ---
+@dp.message_handler(lambda message: message.text in ["IG 2fa Rules", "IG Cookies Rules", "Ig mother account Rules", "Fb 00 fnd 2fa Rules"])
+async def show_only_rules(message: types.Message):
+    category = message.text
+    msg = ""
+    
+    if category == "IG 2fa Rules":
+        msg = (
+            "📌 **পয়েন্ট ১: 📸 Instagram 00 Follower (2FA)**\n\n"
+            "💸 প্রাইস: ২.৩০ টাকা (১০০+ হলে ২.৫০ টাকা)\n\n"
+            "⚠️ নিয়ম: 🚫 Resell ID Not Allowed.\n\n"
+            "📄 শীট ফরম্যাট: User-pass-2fa\n\n"             
+            "⏰ আইডি সাবমিট লাস্ট টাইম: রাত ০৮:১৫ মিনিট।\n\n"
+            "⏳ **রিপোর্ট টাইম: ১২ ঘণ্টা।**"
+        )
+    elif category == "IG Cookies Rules":
+        msg = (
+            "📌 **পয়েন্ট ২: 📸 Instagram Cookies 00 Follower**\n\n"
+            "💸 প্রাইস: ৩.৯০ টাকা (৪.১০ টাকা)\n\n"
+            "⚠️ নিয়ম: ⚡ আইডি করার সাথে সাথে সাবমিট দিতে হবে।\n\n"
+            "📄 শীট ফরম্যাট: **User-pass**\n\n"
+            "⏰ ফাইল সাবমিট লাস্ট টাইম: সকাল ১০:৩০ মিনিট।\n\n"
+            "⏳ **রিপোর্ট টাইম: ৪ ঘণ্টা।**"
+        )
+    elif category == "Ig mother account Rules":
+        msg = (
+            "📌 **পয়েন্ট ৩: 📸 Instagram Mother Account (2FA)**\n\n"
+            "💸 প্রাইস: ৮ টাকা (৫০+ হলে ৯ টাকা)\n\n"
+            "📄 শীট ফরম্যাট: User-pass-2fa\n\n"
+            "⚠️ নিয়ম: ❗ একটি নাম্বার দিয়ে একটি আইডিই খুলতে হবে।\n\n"
+            "⏰ লাস্ট টাইম: যেকোনো সময় (Anytime)。\n\n"
+            "⏳ **রিপোর্ট টাইম: ১ ঘণ্টা।**"
+        )
+    elif category == "Fb 00 fnd 2fa Rules":
+        msg = (
+            "📌 **পয়েন্ট ৪: 🔵 Facebook (FB00Fnd 2fa)**\n\n"
+            "💸 প্রাইস: ৫.৮০ টাকা (৫০+ হলে ৬ টাকা)\n\n"
+            "📄 শীট ফরম্যাট: User-pass-2fa\n\n"
+            "⚠️ নিয়ম: ❌ পাসওয়ার্ডের শেষে তারিখ দেওয়া যাবে না।\n\n"
+            "⏰ আইডি সাবমিট লাস্ট টাইম: রাত ১০:০০ মিনিট।\n\n"
+            "⏳ **রিপোর্ট টাইম: ৫ ঘণ্টা।**"
+        )
+    
+    if msg:
+        await message.answer(msg, parse_mode="Markdown")
+@dp.message_handler(lambda message: message.text == "📊 My Status")
+async def show_user_status(message: types.Message):
+    user_id = message.from_user.id
+    
+    # ডাটাবেস থেকে ইউজারের ব্যালেন্স এবং অন্যান্য তথ্য আনা
+    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+    user_data = cursor.fetchone()
+    balance = user_data[0] if user_data else 0
+
+    # স্ট্যাটাস টেবিল থেকে ফাইল এবং সিঙ্গেল আইডির সংখ্যা আনা
+    cursor.execute("SELECT file_count, single_id_count FROM stats WHERE user_id = ?", (user_id,))
+    stats_data = cursor.fetchone()
+    
+    file_count = stats_data[0] if stats_data else 0
+    single_id_count = stats_data[1] if stats_data else 0
+
+    # সুন্দর করে সাজানো মেসেজ
+    status_msg = (
+        f"👤 **আপনার প্রোফাইল স্ট্যাটাস**\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🆔 **ইউজার আইডি:** `{user_id}`\n"
+        f"💰 **মোট ব্যালেন্স:** {balance} BDT\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"📁 **মোট ফাইল পাঠিয়েছেন:** {file_count} টি\n"
+        f"🆔 **সিঙ্গেল আইডি পাঠিয়েছেন:** {single_id_count} টি\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"সঠিকভাবে কাজ করুন এবং বেশি আয় করুন! 🔥"
+    )
+    
+    await message.answer(status_msg, parse_mode="Markdown")
+    # এডমিন প্যানেল থেকে ইউজারের মেসেজ দেখার কমান্ড
+@dp.message_handler(commands=['userlogs'], user_id=ADMIN_ID)
+async def get_user_history(message: types.Message):
+    args = message.get_args().split()
+    if not args:
+        return await message.answer("⚠️ সঠিক নিয়ম: `/userlogs USER_ID` \nউদাহরণ: `/userlogs 12345678`")
+    
+    target_id = args[0]
+    
+    # শেষ ২০টি মেসেজ সিরিয়ালি আনা হচ্ছে
+    cursor.execute("SELECT message_text, date FROM user_history WHERE user_id = ? ORDER BY date DESC LIMIT 20", (target_id,))
+    rows = cursor.fetchall()
+
+    if rows:
+        history_text = f"📜 **ইউজার আইডি `{target_id}` এর শেষ ২০টি মেসেজ:**\n"
+        history_text += "━━━━━━━━━━━━━━━━━━\n"
+        
+        for i, row in enumerate(rows, 1):
+            history_text += f"{i}. 🕒 {row[1]}\n📝 {row[0]}\n\n"
+        
+        history_text += "━━━━━━━━━━━━━━━━━━"
+        await message.answer(history_text)
+    else:
+        await message.answer(f"❌ আইডি `{target_id}` এর কোনো মেসেজ রেকর্ড পাওয়া যায়নি।")
