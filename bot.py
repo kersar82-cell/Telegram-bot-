@@ -12,7 +12,7 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 # ১. সেটিংস ও ডাটাবেস
 # ==========================================
 API_TOKEN = os.getenv('BOT_TOKEN')
-ADMIN_ID = int(os.getenv('ADMIN_ID'))
+ADMIN_ID = int(os.get v. env('ADMIN_ID'))
 FILE_ADMIN_ID = 7446548744
 app = Flask('')
 @app.route('/')
