@@ -631,6 +631,10 @@ def work_v2_menu():
 # ২. মেইন বাটন হ্যান্ডলার (v2 ওপেন করার জন্য)
 @dp.message_handler(lambda message: "Work Start v2" in message.text or message.text == "🔥Work Start v2")
 async def work_v2_handler(message: types.Message):
+       # ৩০৮ নম্বর লাইনের ঠিক নিচে এটি বসান
+    if await is_blocked(message.from_user.id):
+        return await message.answer("❌ আপনি ব্লকড! আপনি টাকা তুলতে পারবেন না।")
+        
     text = (
         "🔴 **আপনার কাজের ক্যাটাগরি বেছে নিন:**\n"
         "👍 যেকোনো সমস্যায়: @Dinanhaji !"
