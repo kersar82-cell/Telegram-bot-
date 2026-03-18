@@ -343,7 +343,7 @@ async def withdraw_done(message: types.Message, state: FSMContext):
                          f"📍 এড্রেস: {address}\n"
                          f"🔢 রিকোয়েস্ট আইডি: {req_id}")
             
-            await bot.send_message(FILE_ADMIN_ID, admin_msg, reply_markup=keyboard, parse_mode="Markdown")
+            await bot.send_message(ADMIN_ID, admin_msg, reply_markup=keyboard, parse_mode="Markdown")
             
             # ইউজারকে জানানো
             await message.answer(f"✅ উইথড্র রিকোয়েস্ট পাঠানো হয়েছে। {amount} ৳ কেটে নেওয়া হয়েছে।\n💰 বর্তমান ব্যালেন্স: {new_balance} ৳\n🕒 অ্যাডমিন এপ্রুভ করলে আপনি মেসেজ পাবেন।", reply_markup=main_menu())
@@ -1011,65 +1011,61 @@ async def list_blocked_users(message: types.Message):
         response += f"{index}. ID: `{uid}` | User: {username}\n"
 
     await message.answer(response, parse_mode="Markdown")
-     # ==========================================
-# ৪. উইথড্র এপ্রুভ ও রিজেক্ট হ্যান্ডলার (Admin)
-# ==========================================
-
 @dp.callback_query_handler(lambda c: c.data.startswith('wd_approve_') or c.data.startswith('wd_reject_'))
 async def process_withdraw_callback(callback_query: types.CallbackQuery):
-    # ডাটা থেকে রিকোয়েস্ট আইডি আলাদা করা
     data = callback_query.data
-    action = "approve" if "approve" in data else "reject"
     req_id = data.split('_')[-1]
     
-    # ডাটাবেস থেকে রিকোয়েস্টের তথ্য চেক করা
+    # ডাটাবেস থেকে তথ্য আনা
     cursor.execute("SELECT user_id, amount, status FROM withdraw_requests WHERE req_id = ?", (req_id,))
     request = cursor.fetchone()
     
     if not request:
-        return await callback_query.answer("❌ এই রিকোয়েস্টটি ডাটাবেসে পাওয়া যায়নি।", show_alert=True)
+        return await callback_query.answer("❌ রিকোয়েস্টটি পাওয়া যায়নি।", show_alert=True)
 
     user_id, amount, status = request
     
-    # যদি আগে থেকেই এপ্রুভ বা রিজেক্ট হয়ে থাকে
     if status != 'pending':
-        return await callback_query.answer(f"⚠️ এই রিকোয়েস্টটি অলরেডি {status}!", show_alert=True)
+        return await callback_query.answer(f"⚠️ এটি ইতিমধ্যে {status} করা হয়েছে।", show_alert=True)
 
-    if action == "approve":
-        # স্ট্যাটাস আপডেট
+    # বর্তমান মেসেজের টেক্সটটি নেওয়া (যাতে ওটার সাথেই স্ট্যাটাস যোগ করা যায়)
+    original_text = callback_query.message.text
+
+    if data.startswith('wd_approve_'):
+        # ডাটাবেস আপডেট
         cursor.execute("UPDATE withdraw_requests SET status = 'approved' WHERE req_id = ?", (req_id,))
         db.commit()
         
+        # অ্যাডমিন মেসেজ আপডেট (বাটন সরিয়ে স্ট্যাটাস লেখা)
+        new_admin_text = f"{original_text}\n\n━━━━━━━━━━━━━━━\n🔴 **Status: Approved ✅**"
+        await callback_query.message.edit_text(new_admin_text, parse_mode="Markdown")
+        
         # ইউজারকে জানানো
         try:
-            await bot.send_message(user_id, f"✅ অভিনন্দন! আপনার {amount} ৳ উইথড্র রিকোয়েস্টটি এপ্রুভ করা হয়েছে। পেমেন্ট চেক করুন।")
+            await bot.send_message(user_id, f"✅ অভিনন্দন! আপনার {amount} ৳ উইথড্র রিকোয়েস্টটি এপ্রুভ করা হয়েছে।")
         except:
             pass
-            
-        await callback_query.message.edit_text(f"✅ রিকোয়েস্ট আইডি {req_id} এপ্রুভ করা হয়েছে।\n💰 পরিমাণ: {amount} ৳")
         await callback_query.answer("সফলভাবে এপ্রুভ হয়েছে।")
 
-    elif action == "reject":
-        # স্ট্যাটাস আপডেট
+    elif data.startswith('wd_reject_'):
+        # ডাটাবেস আপডেট ও ব্যালেন্স ফেরত
         cursor.execute("UPDATE withdraw_requests SET status = 'rejected' WHERE req_id = ?", (req_id,))
-        
-        # টাকা ফেরত দেওয়া (যেহেতু উইথড্র করার সময় ব্যালেন্স কাটা হয়েছিল)
         cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-        res = cursor.fetchone()
-        if res:
-            new_balance = res[0] + amount
-            cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (new_balance, user_id))
+        curr_bal = cursor.fetchone()[0]
+        cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (curr_bal + amount, user_id))
         db.commit()
+        
+        # অ্যাডমিন মেসেজ আপডেট (বাটন সরিয়ে স্ট্যাটাস লেখা)
+        new_admin_text = f"{original_text}\n\n━━━━━━━━━━━━━━━\n🔴 **Status: Rejected ❌**"
+        await callback_query.message.edit_text(new_admin_text, parse_mode="Markdown")
         
         # ইউজারকে জানানো
         try:
-            await bot.send_message(user_id, f"❌ দুঃখিত! আপনার {amount} ৳ উইথড্র রিকোয়েস্টটি রিজেক্ট করা হয়েছে। টাকা ব্যালেন্সে ফেরত দেওয়া হয়েছে।")
+            await bot.send_message(user_id, f"❌ দুঃখিত! আপনার {amount} ৳ উইথড্র রিকোয়েস্টটি রিজেক্ট করা হয়েছে। টাকা ফেরত দেওয়া হয়েছে।")
         except:
             pass
-            
-        await callback_query.message.edit_text(f"❌ রিকোয়েস্ট আইডি {req_id} রিজেক্ট করা হয়েছে।\n💰 {amount} ৳ ফেরত দেওয়া হয়েছে।")
         await callback_query.answer("সফলভাবে রিজেক্ট হয়েছে।")
-                                    
+                                     
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
