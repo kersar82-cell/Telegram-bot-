@@ -101,9 +101,12 @@ def main_menu():
 @dp.message_handler(commands=['start'], state="*")
 async def start(message: types.Message, state: FSMContext):
     await state.finish()
-    
+        
     user_id = message.from_user.id
-    # ইউজারনেম ফরম্যাট করা
+        # ১০৩ লাইনের নিচে এটি বসান
+    if await is_blocked(user_id):
+        return await message.answer("❌ দুঃখিত, আপনাকে ব্লক করা হয়েছে। আপনি আর এই বটটি ব্যবহার করতে পারবেন না।")
+        
     username = f"@{message.from_user.username}" if message.from_user.username else "No_Username"
     
     # ইউজার আইডি এবং ইউজারনেম সেভ বা আপডেট করা
@@ -132,8 +135,7 @@ Support: @Dinanhaji"""
     
 # =========================================
 @dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa"])
-async def ask_work_type(message: types.Message, state: FSMContext):
-    # এই লাইনগুলো বাম দিক থেকে ৪টি স্পেস ডানে থাকবে
+async def ask_work_type থেকে ৪টি স্পেস ডানে থাকবে
     await state.update_data(category=message.text)
     
     inline_kb = types.InlineKeyboardMarkup()
@@ -462,7 +464,6 @@ async def admin_search(message: types.Message):
         await message.answer("❌ আইডি শুধুমাত্র সংখ্যা হতে হবে।")
         # ১. কমান্ড দিয়ে ব্লক করা: /block 12345678
 @dp.message_handler(commands=['block'], user_id=ADMIN_ID)
-@dp.message_handler(commands=['block'], user_id=ADMIN_ID)
 async def admin_block(message: types.Message, state: FSMContext):
     try:
         # কমান্ড থেকে ইউজার আইডি নেওয়া
@@ -517,7 +518,7 @@ async def send_block_reason(message: types.Message, state: FSMContext):
     
     try:
         # ইউজারের কাছে কারণসহ মেসেজ পাঠানো
-        msg_text = f"❌ আপনাকে বট থেকে ব্লক করা হয়েছে।\n📝 কারণ: {reason}"
+        msg_text = f"❌ আপনাকে বট থেকে ব্লক করা হয়েছে🥲\n\n📝 কারণ: {reason}"
         await bot.send_message(uid, msg_text)
         await message.answer(f"✅ ইউজার `{uid}` কে কারণসহ ব্লক মেসেজ পাঠানো হয়েছে।")
     except:
@@ -569,8 +570,8 @@ async def process_referral_info(message: types.Message, state: FSMContext):
     except:
         pass
         
-    success_text = ("🚨 এক আইডি দিয়ে বার বার রেফার করলে আপনাকে\n এবং ওই আইডিকে টেলিগ্রাম থেকে ব্লক করা হবে!\n\n"
-                    "🟢 আপনার রেফারেল রিসিভ করা হয়েছে।\n"
+    success_text = ("🚨 এক আইডি দিয়ে বার বার রেফার করলে 🥲\n\nআপনাকে BOT থেকে ব্লক করা হবে!\n\n"
+                    "🟢 আপনার রেফারেল রিসিভ করা হয়েছে।\n\n"
                     "👌 ধন্যবাদ")
     
     await message.answer(success_text, reply_markup=main_menu())
