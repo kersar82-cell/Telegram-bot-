@@ -590,7 +590,7 @@ def work_v2_menu():
 # ২. মেইন বাটন হ্যান্ডলার (v2 ওপেন করার জন্য)
 @dp.message_handler(lambda message: "Work Start v2" in message.text or message.text == "🔥Work Start v2")
 async def work_v2_handler(message: types.Message):
-    # ১০৩ লাইনের নিচে এটি বসান
+    user_id = message.from_user.id 
     if await is_blocked(user_id):
         return await message.answer("❌ দুঃখিত, আপনাকে ব্লক করা হয়েছে। \n\n✅আপনি 24 hrs পরে বটটি ব্যবহার করতে পারবেন না।")
         
