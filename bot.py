@@ -259,19 +259,26 @@ async def handle_file(message: types.Message, state: FSMContext):
     
     await message.answer("✅ আপনার ফাইলটি জমা হয়েছে। \n🔥এডমিন চেক করে ব্যালেন্স এড করে দিবে।")
     await state.finish()
-
-
 # ==========================================
-# ==========================================
-# ৩. উইথড্র ও পেমেন্ট মেথড লজিক (Updated)
+# ৩. উইথড্র ও পেমেন্ট মেথড লজিক (Fixed Version)
 # ==========================================
 @dp.message_handler(lambda message: message.text == "💴Withdraw")
 async def withdraw_process(message: types.Message):
-    # নিচের এই ৩টি লাইনকে স্পেস দিয়ে উপরের লাইনের সমান করুন
-    cursor.execute("SELECT balance, address FROM users WHERE user_id=?", (user_id,))
-    res = cursor.fetchone()
-    balance, address = res[0], res[1]
+    # ইউজার আইডি নেওয়া হলো
+    u_id = message.from_user.id 
     
+    # ডাটাবেস থেকে তথ্য আনা (সঠিক স্পেসিং সহ)
+    cursor.execute("SELECT balance, address FROM users WHERE user_id=?", (u_id,))
+    res = cursor.fetchone()
+    
+    if not res:
+        # যদি ইউজার নতুন হয়
+        cursor.execute("INSERT INTO users (user_id, balance) VALUES (?, ?)", (u_id, 0))
+        db.commit()
+        balance, address = 0, None
+    else:
+        balance, address = res[0], res[1]
+
     if not address:
         await message.answer("💌আপনার পেমেন্ট মেথড দিন ।\n 🗣️(যেমন: বিকাশ/নগদ/রকেট/বাইনান্স এড্রেস)\n👀 মেথড পাঠানোর ফরমেট: \n🟢 Bikash :01789*****\n 🟢Nagad :0197976***\n 🟢Binance : 0givkbgbj****")
         await BotState.waiting_for_address.set()
@@ -300,7 +307,9 @@ async def save_address(message: types.Message, state: FSMContext):
 async def withdraw_done(message: types.Message, state: FSMContext):
     try:
         amount = float(message.text)
-        cursor.execute("SELECT balance, address FROM users WHERE user_id=?", (message.from_user.id,))
+        u_id = message.from_user.id
+        
+        cursor.execute("SELECT balance, address FROM users WHERE user_id=?", (u_id,))
         res = cursor.fetchone()
         balance, address = res[0], res[1]
 
@@ -311,12 +320,12 @@ async def withdraw_done(message: types.Message, state: FSMContext):
         else:
             # ডাটাবেসে রিকোয়েস্ট সেভ করা
             cursor.execute("INSERT INTO withdraw_requests (user_id, amount, status) VALUES (?, ?, 'pending')", 
-                           (message.from_user.id, amount))
+                           (u_id, amount))
             req_id = cursor.lastrowid
             
             # ব্যালেন্স কাটা
             new_balance = balance - amount
-            cursor.execute("UPDATE users SET balance=? WHERE user_id=?", (new_balance, message.from_user.id))
+            cursor.execute("UPDATE users SET balance=? WHERE user_id=?", (new_balance, u_id))
             db.commit()
             
             # অ্যাডমিনের জন্য বাটন
@@ -325,14 +334,14 @@ async def withdraw_done(message: types.Message, state: FSMContext):
             btn_reject = types.InlineKeyboardButton("❌ Reject", callback_data=f"wd_reject_{req_id}")
             keyboard.add(btn_approve, btn_reject)
             
-            # অ্যাডমিনকে জানানো
+            # অ্যাডমিনকে জানানো (FILE_ADMIN_ID ব্যবহার করা হয়েছে আপনার ফাইল অনুযায়ী)
             admin_msg = (f"🔔 **নতুন উইথড্র রিকোয়েস্ট!**\n\n"
-                         f"🆔 আইডি: `{message.from_user.id}`\n"
+                         f"🆔 আইডি: `{u_id}`\n"
                          f"💵 পরিমাণ: {amount} ৳\n"
                          f"📍 এড্রেস: {address}\n"
                          f"🔢 রিকোয়েস্ট আইডি: {req_id}")
             
-            await bot.send_message(ADMIN_ID, admin_msg, reply_markup=keyboard, parse_mode="Markdown")
+            await bot.send_message(FILE_ADMIN_ID, admin_msg, reply_markup=keyboard, parse_mode="Markdown")
             
             # ইউজারকে জানানো
             await message.answer(f"✅ উইথড্র রিকোয়েস্ট পাঠানো হয়েছে। {amount} ৳ কেটে নেওয়া হয়েছে।\n💰 বর্তমান ব্যালেন্স: {new_balance} ৳\n🕒 অ্যাডমিন এপ্রুভ করলে আপনি মেসেজ পাবেন।", reply_markup=main_menu())
@@ -341,7 +350,7 @@ async def withdraw_done(message: types.Message, state: FSMContext):
     except Exception as e:
         await message.answer("❌ ভুল ইনপুট। শুধু সংখ্যা লিখুন।")
         await state.finish()
-    
+
 # ৪. এডমিন প্যানেল
 # ==========================================
 @dp.message_handler(commands=['check'])
