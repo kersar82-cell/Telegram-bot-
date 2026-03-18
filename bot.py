@@ -444,7 +444,7 @@ async def admin_search(message: types.Message):
         
         if user:
             import datetime
-today = datetime.date.today().strftime("%Y-%m-%d")
+            today = datetime.date.today().strftime("%Y-%m-%d")
             # আজকের কাজের হিসাব
             cursor.execute("SELECT file_count, single_id_count FROM stats WHERE user_id=? AND date=?", (target_id, today))
             s = cursor.fetchone() or (0, 0)
