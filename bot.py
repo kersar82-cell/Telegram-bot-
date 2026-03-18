@@ -169,7 +169,7 @@ async def process_callback_work_type(callback_query: types.CallbackQuery):
 # --- সিঙ্গেল আইডির তথ্য এক এক করে নেওয়ার হ্যান্ডলার ---
 @dp.message_handler(state=BotState.waiting_for_single_user)
 async def get_id(message: types.Message, state: FSMContext):
-    await state.update_data(=message.text)
+    await state.update_data(u_id=message.text)
     await message.answer("🔙 মেইন মেনুতে ফিরে যেতে/start\n🔑 এবার পাসওয়ার্ড (Password) দিন:")
     await BotState.waiting_for_single_pass.set()
 
