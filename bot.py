@@ -788,3 +788,224 @@ async def get_user_history(message: types.Message):
         await message.answer(history_text)
     else:
         await message.answer(f"❌ আইডি `{target_id}` এর কোনো মেসেজ রেকর্ড পাওয়া যায়নি।")
+# অ্যাডমিন এই কমান্ড দিলে সব ইউজারের ইউজারনেম ও আইডি দেখতে পাবেন
+@dp.message_handler(commands=['allusers'], user_id=ADMIN_ID)
+async def get_all_users(message: types.Message):
+    cursor.execute("SELECT user_id, username FROM users")
+    users = cursor.fetchall()
+    
+    if not users:
+        return await message.answer("❌ ডাটাবেসে কোনো ইউজার পাওয়া যায়নি।")
+    
+    # ইনচার্জ বা অ্যাডমিনের জন্য মেসেজ হেডার
+    response_text = "👥 **বটের সকল ইউজার লিস্ট:**\n━━━━━━━━━━━━━━━\n"
+    
+    count = 0
+    for index, user in enumerate(users, 1):
+        uid, uname = user[0], user[1]
+        # ইউজারনেম না থাকলে 'No Username' দেখাবে
+        display_name = uname if uname else "No Username"
+        response_text += f"{index}. 🆔 `{uid}` | 👤 {display_name}\n"
+        count += 1
+        
+        # টেলিগ্রাম মেসেজের লিমিট এড়াতে প্রতি ৫০ জন পর পর নতুন মেসেজ পাঠানো
+        if index % 50 == 0:
+            await message.answer(response_text, parse_mode="Markdown")
+            response_text = ""
+
+    if response_text:
+        response_text += f"━━━━━━━━━━━━━━━\n✅ মোট ইউজার: {count} জন"
+        await message.answer(response_text, parse_mode="Markdown")
+
+import datetime
+
+@dp.message_handler(commands=['todaystats'], user_id=ADMIN_ID)
+async def get_today_stats(message: types.Message):
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    
+    # ১. ডাটাবেস থেকে সব ইউজার এবং তাদের আজকের কাজের তথ্য আনা
+    cursor.execute("""
+        SELECT users.user_id, users.username, stats.file_count, stats.single_id_count 
+        FROM users 
+        LEFT JOIN stats ON users.user_id = stats.user_id AND stats.date = ?
+    """, (today,))
+    
+    all_users = cursor.fetchall()
+
+    if not all_users:
+        return await message.answer("❌ ডাটাবেসে কোনো ইউজার পাওয়া যায়নি।")
+
+    worked_list = []      # যারা কাজ করেছে
+    not_worked_list = []  # যারা কাজ করেনি
+
+    for user in all_users:
+        uid, uname, f_count, s_count = user
+        f_count = f_count if f_count else 0
+        s_count = s_count if s_count else 0
+        username = uname if uname else "No Username"
+
+        if f_count > 0 or s_count > 0:
+            worked_list.append(f"✅ 🆔 `{uid}` | {username}\n   └📁 ফাইল: {f_count} | 🆔 সিঙ্গেল: {s_count}")
+        else:
+            not_worked_list.append(f"❌ 🆔 `{uid}` | {username}")
+
+    # ২. মেসেজ সাজানো
+    response_text = f"📊 **আজকের রিপোর্ট ({today})**\n\n"
+    
+    response_text += "🔥 **যারা কাজ জমা দিয়েছে:**\n━━━━━━━━━━━━━━━\n"
+    if worked_list:
+        response_text += "\n\n".join(worked_list)
+    else:
+        response_text += "আজ এখন পর্যন্ত কেউ কাজ করেনি।"
+
+    response_text += "\n\n😴 **যারা এখনো কাজ দেয়নি:**\n━━━━━━━━━━━━━━━\n"
+    if not_worked_list:
+        response_text += "\n".join(not_worked_list)
+    else:
+        response_text += "সবাই আজকে কাজ করেছে!"
+
+    # ৩. মেসেজ পাঠানো (অনেক বড় হলে ভাগ করে পাঠানো)
+    if len(response_text) > 4000:
+        # মেসেজ খুব বড় হলে পার্ট পার্ট করে পাঠানো
+        for i in range(0, len(response_text), 4000):
+            await message.answer(response_text[i:i+4000], parse_mode="Markdown")
+    else:
+        await message.answer(response_text, parse_mode="Markdown")
+# --- এটি ফাইলের একদম শেষে বসান ---
+  # ==========================================
+# ৪. উইথড্র এপ্রুভ/রিজেক্ট বাটন প্রসেস
+# ==========================================
+@dp.callback_query_handler(lambda c: c.data.startswith('wd_'), user_id=ADMIN_ID)
+async def process_withdraw_callback(call: types.CallbackQuery):
+    action = call.data.split('_')[1] # approve/reject
+    req_id = call.data.split('_')[2]
+
+    cursor.execute("SELECT user_id, amount, status FROM withdraw_requests WHERE req_id=?", (req_id,))
+    request = cursor.fetchone()
+
+    if not request or request[2] != 'pending':
+        return await call.answer("⚠️ এই রিকোয়েস্টটি আগেই প্রসেস করা হয়েছে।", show_alert=True)
+
+    uid, amount, _ = request
+
+    if action == "approve":
+        cursor.execute("UPDATE withdraw_requests SET status='approved' WHERE req_id=?", (req_id,))
+        db.commit()
+        try:
+            await bot.send_message(uid, f"✅ **আপনার উইথড্র এপ্রুভ হয়েছে!**\n💰 পরিমাণ: {amount} ৳\nঅল্প সময়ের মধ্যে পেমেন্ট পেয়ে যাবেন।")
+        except: pass
+        await call.message.edit_text(call.message.text + "\n\n✅ **Status: Approved**")
+        await call.answer("সফলভাবে এপ্রুভ করা হয়েছে।")
+
+    elif action == "reject":
+        # রিজেক্ট করলে টাকা ইউজারের একাউন্টে ফেরত দেওয়া
+        cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, uid))
+        cursor.execute("UPDATE withdraw_requests SET status='rejected' WHERE req_id=?", (req_id,))
+        db.commit()
+        try:
+            await bot.send_message(uid, f"❌ **আপনার উইথড্র রিকোয়েস্ট রিজেক্ট করা হয়েছে।**\n💰 {amount} ৳ আপনার ব্যালেন্সে ফেরত দেওয়া হয়েছে।")
+        except: pass
+        await call.message.edit_text(call.message.text + "\n\n❌ **Status: Rejected**")
+        await call.answer("রিকোয়েস্ট রিজেক্ট করা হয়েছে।")
+import random
+
+# ১. ফেক মেম্বার অ্যাড করার কমান্ড (অ্যাডমিনের জন্য)
+@dp.message_handler(commands=['add_fake'], user_id=ADMIN_ID)
+async def add_fake_leaderboard(message: types.Message):
+    args = message.get_args().split()
+    if len(args) < 2:
+        return await message.answer("⚠️ নিয়ম: `/add_fake NAME BALANCE` \nউদাহরণ: `/add_fake Worker1 5000`")
+
+    fake_name = args[0].replace("_", " ")
+    try:
+        balance = float(args[1])
+    except:
+        return await message.answer("❌ ব্যালেন্স অবশ্যই নম্বর হতে হবে।")
+
+    # ফেক ইউআইডি জেনারেট (৬ ডিজিট)
+    fake_uid = random.randint(100000, 999999) 
+
+    # ডাটাবেসে সেভ (username কলামে নাম থাকলেও আমরা লিডারবোর্ডে UID দেখাবো)
+    cursor.execute("INSERT INTO users (user_id, username, balance) VALUES (?, ?, ?)", (fake_uid, fake_name, balance))
+    db.commit()
+
+    await message.answer(f"✅ ফেক ইউজার যুক্ত হয়েছে!\n🆔 UID: `{fake_uid}`\n💰 ব্যালেন্স: {balance} ৳")
+
+@dp.message_handler(lambda message: message.text == "🏆 Leaderboard")
+async def show_leaderboard(message: types.Message):
+    user_id = message.from_user.id
+    
+    # এটি ডাটাবেসের সবার মধ্যে তুলনা করে টপ ৫ জনের UID এবং Balance আনবে
+    # এখানে রিয়েল এবং ফেক সবাই একসাথে প্রতিযোগিতা করবে
+    cursor.execute("SELECT user_id, balance FROM users ORDER BY balance DESC LIMIT 5")
+    top_rows = cursor.fetchall()
+
+    if not top_rows:
+        return await message.answer("🏆 লিডারবোর্ড এখনো খালি!")
+
+    # ইউজারের নিজের পজিশন কত নম্বরে সেটা বের করা
+    cursor.execute("""
+        SELECT COUNT(*) + 1 FROM users 
+        WHERE balance > (SELECT balance FROM users WHERE user_id = ?)
+    """, (user_id,))
+    user_rank = cursor.fetchone()[0]
+
+    # মেসেজ তৈরি
+    text = "🏆 **সর্বোচ্চ ব্যালেন্সধারী ৫ জন কর্মী** 🏆\n"
+    text += "━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    emojis = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+    
+    for i, row in enumerate(top_rows):
+        uid, balance = row
+        # এখানে আসল বা ফেক যার ব্যালেন্স বেশি হবে, তার UID-ই উপরে দেখাবে
+        text += f"{emojis[i]} **UID:** `{uid}`\n└─ 💰 ব্যালেন্স: {balance} ৳\n\n"
+
+    text += "━━━━━━━━━━━━━━━━━━━\n"
+    text += f"👤 **আপনার আইডি:** `{user_id}`\n"
+    text += f"📊 **অবস্থান:** {user_rank} তম\n"
+    text += "━━━━━━━━━━━━━━━━━━━\n🔥 বেশি কাজ করে লিডারবোর্ডের শীর্ষে আসুন!"
+    
+    await message.answer(text, parse_mode="Markdown")
+
+# ৩. ফেক বা রিয়েল ইউজারের ব্যালেন্স এডিট করার কমান্ড (অ্যাডমিনের জন্য)
+@dp.message_handler(commands=['edit_fake'], user_id=ADMIN_ID)
+async def edit_fake_balance(message: types.Message):
+    args = message.get_args().split()
+    if len(args) != 2:
+        return await message.answer("⚠️ নিয়ম: `/edit_fake USER_ID NEW_BALANCE`")
+
+    target_uid = args[0]
+    try:
+        new_balance = float(args[1])
+    except:
+        return await message.answer("❌ ব্যালেন্স নম্বর হতে হবে।")
+
+    cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (new_balance, target_uid))
+    db.commit()
+    
+    await message.answer(f"✅ সাকসেস!\n🆔 আইডি: `{target_uid}`\n💰 ব্যালেন্স সেট: `{new_balance}` ৳")
+@dp.message_handler(commands=['del_fake'], user_id=ADMIN_ID)
+async def delete_fake_user(message: types.Message):
+    # নিয়ম: /del_fake [ইউজার_আইডি]
+    args = message.get_args().split()
+    
+    if len(args) != 1:
+        return await message.answer("⚠️ সঠিক নিয়ম: `/del_fake USER_ID` \n\n"
+                                   "উদাহরণ: `/del_fake 123456` \n"
+                                   "(লিডারবোর্ড থেকে আইডি কপি করে এখানে বসান)")
+
+    target_uid = args[0]
+
+    # ডাটাবেস থেকে ওই আইডিটি মুছে ফেলা
+    cursor.execute("DELETE FROM users WHERE user_id = ?", (target_uid,))
+    # চাইলে তার স্ট্যাটাস টেবিল থেকেও ডাটা মুছে দিতে পারেন (অপশনাল)
+    cursor.execute("DELETE FROM stats WHERE user_id = ?", (target_uid,))
+    
+    db.commit()
+    
+    await message.answer(f"🗑️ সফলভাবে ডিলিট করা হয়েছে!\n🆔 আইডি: `{target_uid}` এখন আর লিডারবোর্ডে দেখাবে না।")
+    
+if __name__ == '__main__':
+    keep_alive()
+    executor.start_polling(dp, skip_updates=True)
