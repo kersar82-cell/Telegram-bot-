@@ -940,9 +940,6 @@ async def show_leaderboard(message: types.Message):
         # এখানে আসল বা ফেক যার ব্যালেন্স বেশি হবে, তার UID-ই উপরে দেখাবে
         text += f"{emojis[i]} **UID:** `{uid}`\n└─ 💰 ব্যালেন্স: {balance} ৳\n\n"
 
-    text += "━━━━━━━━━━━━━━━━━━━\n"
-    text += f"👤 **আপনার আইডি:** `{user_id}`\n"
-    text += f"📊 **অবস্থান:** {user_rank} তম\n"
     text += "━━━━━━━━━━━━━━━━━━━\n🔥 বেশি কাজ করে লিডারবোর্ডের শীর্ষে আসুন!"
     
     await message.answer(text, parse_mode="Markdown")
