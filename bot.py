@@ -38,20 +38,10 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS users
 db.commit()
 cursor.execute('''CREATE TABLE IF NOT EXISTS blacklist (user_id INTEGER PRIMARY KEY)''')
 db.commit()
-
-cursor.execute('''CREATE TABLE IF NOT EXISTS users 
-                  (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 0, address TEXT)''')
-db.commit()
+                  
 cursor.execute('''ALTER TABLE users ADD COLUMN referral_count INTEGER DEFAULT 0''')
 db.commit()
-# টিম টেবিল: যেখানে টিমের নাম এবং লিডারের আইডি থাকবে
-cursor.execute('''CREATE TABLE IF NOT EXISTS teams 
-                  (team_id INTEGER PRIMARY KEY AUTOINCREMENT, team_name TEXT, leader_id INTEGER)''')
 
-# মেম্বার টেবিল: কে কোন টিমে আছে তা ট্র্যাক করার জন্য
-cursor.execute('''CREATE TABLE IF NOT EXISTS team_members 
-                  (user_id INTEGER PRIMARY KEY, team_id INTEGER)''')
-db.commit()
 # এটি ডাটাবেস সেকশনে যোগ করুন
 cursor.execute('''CREATE TABLE IF NOT EXISTS user_history 
                   (user_id INTEGER, message_text TEXT, date TEXT)''')
@@ -218,9 +208,6 @@ async def get_2fa(message: types.Message, state: FSMContext):
     category = data.get('category')
     amount_to_add = 0
 
-    category = data.get('category')
-    amount_to_add = 0
-
     # পুরাতন এবং নতুন সব কাজের রেট এখানে দেওয়া হলো
     if category == "FB 00 Fnd 2fa":
         amount_to_add = 5.80
@@ -235,31 +222,7 @@ async def get_2fa(message: types.Message, state: FSMContext):
     if amount_to_add > 0:
         cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount_to_add, message.from_user.id))
     db.commit()
-        # শুধুমাত্র সিঙ্গেল আইডি জমা দিলে ব্যালেন্স আপডেট হবে
-    if amount_to_add > 0:
-        # ১. ইউজারের নিজের ব্যালেন্স আপডেট
-        cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount_to_add, message.from_user.id))
         
-        # ২. টিম মেম্বার হলে লিডারকে কমিশন দেওয়া (আইডিয়া ২)
-        cursor.execute("SELECT team_id FROM team_members WHERE user_id=?", (message.from_user.id,))
-        team_res = cursor.fetchone()
-        
-        if team_res:
-            t_id = team_res[0]
-            # টিমের লিডার কে তা খুঁজে বের করা
-            cursor.execute("SELECT leader_id FROM teams WHERE team_id=?", (t_id,))
-            leader_data = cursor.fetchone()
-            
-            if leader_data:
-                leader_id = leader_data[0]
-                # লিডার পাবে প্রতি আইডিতে ০.১০ টাকা কমিশন
-                leader_commission = 0.10 
-                cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (leader_commission, leader_id))
-                
-                # ৩. টিম স্ট্যাটাস আপডেট (আইডিয়া ১ এর জন্য - ঐচ্ছিক)
-                # এখানে আপনি চাইলে টিমের মোট কাজের সংখ্যাও আপডেট করতে পারেন
-    
-    db.commit()
     await bot.send_message(ADMIN_ID, admin_msg, parse_mode="Markdown")
     await message.answer("✅ আপনার তথ্য জমা হয়েছে!\n📌 মেন মেনুতে ফিরে যেতে/start", reply_markup=main_menu())
     
