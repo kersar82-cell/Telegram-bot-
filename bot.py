@@ -135,7 +135,7 @@ Support: @Dinanhaji"""
     
 # =========================================
 @dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa"])
-async def ask_work_type থেকে ৪টি স্পেস ডানে থাকবে
+async def ask_work_type#থেকে ৪টি স্পেস ডানে থাকবে
     await state.update_data(category=message.text)
     
     inline_kb = types.InlineKeyboardMarkup()
