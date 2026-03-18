@@ -134,9 +134,10 @@ Support: @Dinanhaji"""
     await message.answer("✅ আপনার কাজের ধরণ বেছে নিন:", reply_markup=main_menu())
     
 # =========================================
-@dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa"])
-async def ask_work_type#থেকে ৪টি স্পেস ডানে থাকবে
-    await state.update_data(category=message.text)
+@dp.message_handler(lambda message: message.text == "Work start 🔥")
+async def work_start(message: types.Message):
+    if await is_blocked(message.from_user.id):
+        return await message.answer("❌ দুঃখিত, আপনি ব্লকড! আপনি আর কাজ জমা দিতে পারবেন না। /nএডমিনের সাথে কথা বলুন 👍")
     
     inline_kb = types.InlineKeyboardMarkup()
     inline_kb.add(types.InlineKeyboardButton("🗃️ File", callback_data="type_file"))
