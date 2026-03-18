@@ -267,7 +267,7 @@ async def handle_file(message: types.Message, state: FSMContext):
 # ==========================================
 @dp.message_handler(lambda message: message.text == "💴Withdraw")
 async def withdraw_process(message: types.Message):
-    # ১০৩ লাইনের নিচে এটি বসান
+    user_id = message.from_user.id 
     if await is_blocked(user_id):
         return await message.answer("❌ দুঃখিত, আপনাকে ব্লক করা হয়েছে। \n\n✅আপনি 24 hrs পরে বটটি ব্যবহার করতে পারবেন না।")
         
@@ -429,7 +429,6 @@ async def admin_search(message: types.Message):
     except ValueError:
         await message.answer("❌ আইডি শুধুমাত্র সংখ্যা হতে হবে।")
         # ১. কমান্ড দিয়ে ব্লক করা: /block 12345678
-@dp.message_handler(commands=['block'], user_id=ADMIN_ID)
 @dp.message_handler(commands=['block'], user_id=ADMIN_ID)
 async def admin_block(message: types.Message, state: FSMContext):
     try:
