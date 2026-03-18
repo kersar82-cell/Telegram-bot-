@@ -266,10 +266,7 @@ async def handle_file(message: types.Message, state: FSMContext):
 # ৩. উইথড্র ও পেমেন্ট মেথড লজিক (Updated)
 # ==========================================
 @dp.message_handler(lambda message: message.text == "💴Withdraw")
-async def withdraw_process(message: types.Message):
-    if await is_blocked(message.from_user.id):
-        return await message.answer("❌ দুঃখিত, আপনি ব্লকড! আপনি আর কাজ জমা দিতে পারবেন না। /nএডমিনের সাথে কথা বলুন 👍")
-    
+async def withdraw_process(message: types.Message)
     # নিচের এই ৩টি লাইনকে স্পেস দিয়ে উপরের লাইনের সমান করুন
     cursor.execute("SELECT balance, address FROM users WHERE user_id=?", (user_id,))
     res = cursor.fetchone()
