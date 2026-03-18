@@ -269,12 +269,13 @@ async def handle_file(message: types.Message, state: FSMContext):
 async def withdraw_process(message: types.Message):
     user_id = message.from_user.id 
     if await is_blocked(user_id):
-        return await message.answer("❌ দুঃখিত, আপনাকে ব্লক করা হয়েছে। \n\n✅আপনি 24 hrs পরে বটটি ব্যবহার করতে পারবেন না।")
+        return await message.answer("❌ আপনি ব্লকড!")
         
-    cursor.execute("SELECT balance, address FROM users WHERE user_id=?", (message.from_user.id,))
+    # নিচের এই ৩টি লাইনকে স্পেস দিয়ে উপরের লাইনের সমান করুন
+    cursor.execute("SELECT balance, address FROM users WHERE user_id=?", (user_id,))
     res = cursor.fetchone()
     balance, address = res[0], res[1]
-
+    
     if not address:
         await message.answer("💌আপনার পেমেন্ট মেথড দিন ।\n 🗣️(যেমন: বিকাশ/নগদ/রকেট/বাইনান্স এড্রেস)\n👀 মেথড পাঠানোর ফরমেট: \n🟢 Bikash :01789*****\n 🟢Nagad :0197976***\n 🟢Binance : 0givkbgbj****")
         await BotState.waiting_for_address.set()
