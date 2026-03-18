@@ -224,6 +224,7 @@ async def get_2fa(message: types.Message, state: FSMContext):
     db.commit()
         
     await bot.send_message(ADMIN_ID, admin_msg, parse_mode="Markdown")
+    await state.finish()
     await message.answer("✅ আপনার তথ্য জমা হয়েছে!\n📌 মেন মেনুতে ফিরে যেতে/start", reply_markup=main_menu())
     
 # ৩. রিফ্রেশ বাটনের লজিক (state="*" যোগ করা হয়েছে যাতে যেকোনো অবস্থায় এটি কাজ করে)
@@ -968,7 +969,30 @@ async def delete_fake_user(message: types.Message):
     db.commit()
     
     await message.answer(f"🗑️ সফলভাবে ডিলিট করা হয়েছে!\n🆔 আইডি: `{target_uid}` এখন আর লিডারবোর্ডে দেখাবে না।")
-    
+    # ==========================================
+# ব্লক করা ইউজারদের তালিকা দেখার কমান্ড
+# ==========================================
+@dp.message_handler(commands=['check_blocks'], user_id=ADMIN_ID)
+async def list_blocked_users(message: types.Message):
+    # ডাটাবেস থেকে ব্লকড ইউজারদের তথ্য আনা
+    cursor.execute("SELECT user_id FROM blacklist")
+    blocked_list = cursor.fetchall()
+
+    if not blocked_list:
+        return await message.answer("✅ বর্তমানে কোনো ইউজার ব্লক নেই।")
+
+    response = "🚫 **ব্লক করা ইউজারদের তালিকা:**\n\n"
+    for index, row in enumerate(blocked_list, start=1):
+        uid = row[0]
+        # ইউজারনেম খুঁজে বের করার চেষ্টা করা (যদি থাকে)
+        cursor.execute("SELECT username FROM users WHERE user_id = ?", (uid,))
+        user_info = cursor.fetchone()
+        
+        username = f"@{user_info[0]}" if user_info and user_info[0] else "নাম পাওয়া যায়নি"
+        response += f"{index}. ID: `{uid}` | User: {username}\n"
+
+    await message.answer(response, parse_mode="Markdown")
+        
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
