@@ -306,6 +306,10 @@ async def handle_file(message: types.Message, state: FSMContext):
 # ==========================================
 @dp.message_handler(lambda message: message.text == "💴Withdraw")
 async def withdraw_process(message: types.Message):
+        # ৩০৮ নম্বর লাইনের ঠিক নিচে এটি বসান
+    if await is_blocked(message.from_user.id):
+        return await message.answer("❌ আপনি ব্লকড! আপনি টাকা তুলতে পারবেন না।")
+        
     cursor.execute("SELECT balance, address FROM users WHERE user_id=?", (message.from_user.id,))
     res = cursor.fetchone()
     balance, address = res[0], res[1]
@@ -528,6 +532,9 @@ async def send_block_reason(message: types.Message, state: FSMContext):
 @dp.message_handler(lambda message: message.text == "👥 Referral")
 async def referral_command(message: types.Message):
     user_id = message.from_user.id
+        # ৩০৮ নম্বর লাইনের ঠিক নিচে এটি বসান
+    if await is_blocked(message.from_user.id):
+        return await message.answer("❌ আপনি ব্লকড! আপনি টাকা তুলতে পারবেন না।")
     
     # ডাটাবেস থেকে ইউজারের রেফারেল সংখ্যা খুঁজে আনা
     cursor.execute("SELECT referral_count FROM users WHERE user_id = ?", (user_id,))
@@ -597,6 +604,10 @@ async def admin_edit_referral(message: types.Message):
     # 'Support' বাটনে ক্লিক করলে যা শো করবে (হাইপারলিঙ্ক সহ)
 @dp.message_handler(lambda message: message.text == "🧑‍💻Support")
 async def support_message(message: types.Message):
+       # ৩০৮ নম্বর লাইনের ঠিক নিচে এটি বসান
+    if await is_blocked(message.from_user.id):
+        return await message.answer("❌ আপনি ব্লকড! আপনি টাকা তুলতে পারবেন না।")
+        
     # এখানে [শব্দ](লিঙ্ক) এই ফরম্যাটে হাইপারলিঙ্ক সেট করা হয়েছে
     text = (
         "👋 **হ্যালো! আমাদের সাপোর্ট সেন্টারে আপনাকে স্বাগতম।**\n\n"
@@ -694,6 +705,10 @@ async def rules_price_handler(message: types.Message):
 # --- ৩. রুলস মেসেজ হ্যান্ডলার ---
 @dp.message_handler(lambda message: message.text in ["IG 2fa Rules", "IG Cookies Rules", "Ig mother account Rules", "Fb 00 fnd 2fa Rules"])
 async def show_only_rules(message: types.Message):
+        # ৩০৮ নম্বর লাইনের ঠিক নিচে এটি বসান
+    if await is_blocked(message.from_user.id):
+        return await message.answer("❌ আপনি ব্লকড! আপনি টাকা তুলতে পারবেন না।")
+        
     category = message.text
     msg = ""
     
@@ -936,7 +951,10 @@ async def add_fake_leaderboard(message: types.Message):
 @dp.message_handler(lambda message: message.text == "🏆 Leaderboard")
 async def show_leaderboard(message: types.Message):
     user_id = message.from_user.id
-    
+        # ৩০৮ নম্বর লাইনের ঠিক নিচে এটি বসান
+    if await is_blocked(message.from_user.id):
+        return await message.answer("❌ আপনি ব্লকড! আপনি টাকা তুলতে পারবেন না।")
+        
     # এটি ডাটাবেসের সবার মধ্যে তুলনা করে টপ ৫ জনের UID এবং Balance আনবে
     # এখানে রিয়েল এবং ফেক সবাই একসাথে প্রতিযোগিতা করবে
     cursor.execute("SELECT user_id, balance FROM users ORDER BY balance DESC LIMIT 5")
