@@ -1194,55 +1194,39 @@ async def list_blocked_users(message: types.Message):
         response += f"{index}. ID: `{uid}` | User: {username}\n"
 
     await message.answer(response, parse_mode="Markdown")
-@dp.callback_query_handler(lambda c: c.data.startswith('wd_'), user_id=ADMIN_ID)
+# --- উইথড্র অ্যাপ্রুভ এবং রিজেক্ট হ্যান্ডলার (সংশোধিত) ---
+@dp.callback_query_handler(lambda c: c.data.startswith('wd_approve_') or c.data.startswith('wd_reject_'), user_id=ADMIN_ID)
 async def handle_withdraw_actions(call: types.CallbackQuery):
-    # বাটন থেকে ডাটা আলাদা করা (অ্যাকশন, ইউজার আইডি, পরিমাণ)
+    # ডাটা আলাদা করা
     data = call.data.split('_')
-    action = data[1] # approve অথবা reject
+    action = data[1]  # approve অথবা reject
     target_uid = int(data[2])
     amount = int(data[3])
 
     if action == "approve":
-        # ১. রেফারার খুঁজে বের করা এবং ৫% কমিশন দেওয়া
-        cursor.execute("SELECT referred_by FROM users WHERE user_id=?", (target_uid,))
-        res = cursor.fetchone()
-        referrer_id = res[0] if res else None
-
-        commission_text = ""
-        if referrer_id:
-            commission = amount * 0.05  # ৫% কমিশন হিসেব করা
-            cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (commission, referrer_id))
-            db.commit()
-            
-            # রেফারারকে নোটিফিকেশন পাঠানো
-            try:
-                await bot.send_message(referrer_id, f"🎊 **অভিনন্দন!**\nআপনার রেফার করা ইউজার `{target_uid}` উইথড্র সম্পন্ন করেছেন। আপনি ৫% কমিশন হিসেবে **{commission:.2f} ৳** বোনাস পেয়েছেন! 🔥")
-            except: 
-                pass
-            commission_text = f"\n\n🎁 রেফারারকে {commission:.2f} ৳ কমিশন দেওয়া হয়েছে।"
-
-        # ২. যে ইউজার উইথড্র দিয়েছে তাকে জানানো
+        # ইউজারকে জানানো
         try:
-            await bot.send_message(target_uid, f"✅ **আপনার উইথড্র রিকোয়েস্ট অ্যাপ্রুভ হয়েছে!**\n💰 পরিমাণ: {amount} ৳\nআপনার দেওয়া পেমেন্ট মেথডে টাকা পাঠিয়ে দেওয়া হয়েছে। ধন্যবাদ।")
-        except: 
+            await bot.send_message(target_uid, f"✅ **আপনার উইথড্র রিকোয়েস্ট অ্যাপ্রুভ হয়েছে!**\n💰 পরিমাণ: {amount} ৳\nআপনার টাকা পাঠিয়ে দেওয়া হয়েছে। ধন্যবাদ।")
+        except:
             pass
             
-        await call.message.edit_text(call.message.text + f"\n\n✅ **Status: Approved**{commission_text}")
-        await call.answer("সফলভাবে এপ্রুভ এবং কমিশন দেওয়া হয়েছে।", show_alert=True)
+        # অ্যাডমিন মেসেজ আপডেট করা
+        await call.message.edit_text(call.message.text + f"\n\n✅ **Status: Approved**")
+        await call.answer("সফলভাবে এপ্রুভ করা হয়েছে।", show_alert=True)
 
     elif action == "reject":
-        # ৩. রিজেক্ট করলে টাকা ইউজারের একাউন্টে ফেরত দেওয়া
+        # ব্যালেন্স ফেরত দেওয়া
         cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, target_uid))
         db.commit()
         
         try:
-            await bot.send_message(target_uid, f"❌ **উইথড্র রিকোয়েস্ট রিজেক্ট!**\n💰 {amount} ৳ আপনার মেইন ব্যালেন্সে ফেরত দেওয়া হয়েছে।")
-        except: 
+            await bot.send_message(target_uid, f"❌ **উইথড্র রিকোয়েস্ট রিজেক্ট!**\n💰 {amount} ৳ আপনার ব্যালেন্সে ফেরত দেওয়া হয়েছে।")
+        except:
             pass
             
         await call.message.edit_text(call.message.text + "\n\n❌ **Status: Rejected (টাকা ফেরত দেওয়া হয়েছে)**")
-        await call.answer("রিকোয়েস্ট রিজেক্ট করা হয়েছে এবং টাকা ফেরত দেওয়া হয়েছে।", show_alert=True)
-        
+        await call.answer("রিকোয়েস্ট রিজেক্ট করা হয়েছে।", show_alert=True)
+    
 # --- ১. রেফারেল বাটন হ্যান্ডলার ---
 @dp.message_handler(lambda message: message.text == "👥 Referral")
 async def referral_command(message: types.Message):
