@@ -442,36 +442,64 @@ async def save_sendmoney_db(message: types.Message, state: FSMContext):
     await message.answer(f"✅ আপনার **{p_type.upper()}** তথ্য সফলভাবে সেভ হয়েছে!", reply_markup=main_menu())
     await state.finish()
     # --- ১. উইথড্র বাটন ক্লিক করলে অপশন দেখানো ---
-@dp.callback_query_handler(text="start_withdraw")
-async def withdraw_selection(call: types.CallbackQuery):
+@dp.callback_query_handler(text="start_withdraw", state="*")
+async def withdraw_selection(call: types.CallbackQuery, state: FSMContext):
+    await state.finish()
     user_id = call.from_user.id
     
-    # ডাটাবেস থেকে ইউজারের ব্যালেন্স এবং সেভ করা নম্বরগুলো চেক করা
-    cursor.execute("SELECT balance, recharge_num, bkash_num, nagad_num, rocket_num, binance_id FROM users WHERE user_id=?", (user_id,))
+    # ডাটাবেস থেকে ব্যালেন্স আনা
+    cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     res = cursor.fetchone()
-    
-    if not res:
-        return await call.answer("❌ আপনার তথ্য পাওয়া যায়নি। অনুগ্রহ করে /start দিন।")
-    
-    balance, recharge, bkash, nagad, rocket, binance = res
-    
-    # মিনিমাম উইথড্র লিমিট চেক (ধরা যাক ২০ টাকা)
-    if balance < 20:
-        return await call.answer(f"❌ আপনার ব্যালেন্স পর্যাপ্ত নয়! (মিনিমাম ২০ টাকা লাগবে। বর্তমান: {balance} ৳)", show_alert=True)
+    balance = res[0] if res else 0
 
+    # এখানে কোনো ব্যালেন্স চেক নেই, সরাসরি দুটি বাটনই দেখাবে
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
         types.InlineKeyboardButton("📱 Mobile Recharge", callback_data="wd_recharge"),
         types.InlineKeyboardButton("💸 Send Money", callback_data="wd_sendmoney")
     )
     
-    await call.message.edit_text(
+    text = (
         f"💰 **আপনার বর্তমান ব্যালেন্স:** `{balance:.2f} ৳`\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "আপনি কোন মাধ্যমে পেমেন্ট নিতে চান? সিলেক্ট করুন:",
-        reply_markup=kb
+        "আপনি কোন মাধ্যমে পেমেন্ট নিতে চান? সিলেক্ট করুন: 👇"
     )
 
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    await call.answer()
+
+# --- সেন্ড মানি ক্লিক করলে ৫০ টাকার নিচের চেক ---
+@dp.callback_query_handler(text="wd_sendmoney")
+async def check_sendmoney_limit(call: types.CallbackQuery, state: FSMContext):
+    user_id = call.from_user.id
+    cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    balance = cursor.fetchone()[0]
+
+    # যদি ৫০ টাকার কম হয়
+    if balance < 50:
+        return await call.answer("⚠️ সেন্ড মানি করতে কমপক্ষে ৫০ টাকা লাগবে। আপনার ব্যালেন্স কম!", show_alert=True)
+    
+    # ৫০ বা তার বেশি হলে টাকার পরিমাণ চাইবে (আগের ধাপ ৫ এর মতো)
+    await state.update_data(withdraw_type="sendmoney")
+    await BotState.waiting_for_withdraw_amount.set()
+    await call.message.answer("💵 কত টাকা উইথড্র (Send Money) করতে চান? পরিমাণ লিখুন:")
+    await call.answer()
+
+# --- মোবাইল রিচার্জ ক্লিক করলে (২০ টাকার চেক রাখতে পারেন) ---
+@dp.callback_query_handler(text="wd_recharge")
+async def check_recharge_limit(call: types.CallbackQuery, state: FSMContext):
+    user_id = call.from_user.id
+    cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    balance = cursor.fetchone()[0]
+
+    if balance < 20:
+        return await call.answer("⚠️ রিচার্জ নিতে কমপক্ষে ২০ টাকা লাগবে।", show_alert=True)
+    
+    await state.update_data(withdraw_type="recharge")
+    await BotState.waiting_for_withdraw_amount.set()
+    await call.message.answer("📱 কত টাকা রিচার্জ নিতে চান? পরিমাণ লিখুন:")
+    await call.answer()
+    
 # --- ২. উইথড্র মেথড সিলেক্ট করার পর টাকার পরিমাণ চাওয়া ---
 @dp.callback_query_handler(lambda c: c.data.startswith('wd_'))
 async def ask_withdraw_amount(call: types.CallbackQuery, state: FSMContext):
@@ -1168,9 +1196,9 @@ async def list_blocked_users(message: types.Message):
     await message.answer(response, parse_mode="Markdown")
 @dp.callback_query_handler(lambda c: c.data.startswith('wd_'), user_id=ADMIN_ID)
 async def handle_withdraw_actions(call: types.CallbackQuery):
-    # ডাটা থেকে অ্যাকশন, ইউজার আইডি এবং টাকার পরিমাণ আলাদা করা
+    # বাটন থেকে ডাটা আলাদা করা (অ্যাকশন, ইউজার আইডি, পরিমাণ)
     data = call.data.split('_')
-    action = data[1] # approve / reject
+    action = data[1] # approve অথবা reject
     target_uid = int(data[2])
     amount = int(data[3])
 
@@ -1182,20 +1210,22 @@ async def handle_withdraw_actions(call: types.CallbackQuery):
 
         commission_text = ""
         if referrer_id:
-            commission = amount * 0.05  # ৫% কমিশন
+            commission = amount * 0.05  # ৫% কমিশন হিসেব করা
             cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (commission, referrer_id))
             db.commit()
             
-            # রেফারারকে জানানো
+            # রেফারারকে নোটিফিকেশন পাঠানো
             try:
                 await bot.send_message(referrer_id, f"🎊 **অভিনন্দন!**\nআপনার রেফার করা ইউজার `{target_uid}` উইথড্র সম্পন্ন করেছেন। আপনি ৫% কমিশন হিসেবে **{commission:.2f} ৳** বোনাস পেয়েছেন! 🔥")
-            except: pass
+            except: 
+                pass
             commission_text = f"\n\n🎁 রেফারারকে {commission:.2f} ৳ কমিশন দেওয়া হয়েছে।"
 
-        # ২. উইথড্র দেওয়া ইউজারকে জানানো
+        # ২. যে ইউজার উইথড্র দিয়েছে তাকে জানানো
         try:
-            await bot.send_message(target_uid, f"✅ **আপনার উইথড্র রিকোয়েস্ট অ্যাপ্রুভ হয়েছে!**\n💰 পরিমাণ: {amount} ৳\nআপনার পেমেন্ট এড্রেসে টাকা পাঠিয়ে দেওয়া হয়েছে। ধন্যবাদ।")
-        except: pass
+            await bot.send_message(target_uid, f"✅ **আপনার উইথড্র রিকোয়েস্ট অ্যাপ্রুভ হয়েছে!**\n💰 পরিমাণ: {amount} ৳\nআপনার দেওয়া পেমেন্ট মেথডে টাকা পাঠিয়ে দেওয়া হয়েছে। ধন্যবাদ।")
+        except: 
+            pass
             
         await call.message.edit_text(call.message.text + f"\n\n✅ **Status: Approved**{commission_text}")
         await call.answer("সফলভাবে এপ্রুভ এবং কমিশন দেওয়া হয়েছে।", show_alert=True)
@@ -1206,12 +1236,13 @@ async def handle_withdraw_actions(call: types.CallbackQuery):
         db.commit()
         
         try:
-            await bot.send_message(target_uid, f"❌ **উইথড্র রিকোয়েস্ট রিজেক্ট!**\n💰 {amount} ৳ আপনার ব্যালেন্সে ফেরত দেওয়া হয়েছে।")
-        except: pass
+            await bot.send_message(target_uid, f"❌ **উইথড্র রিকোয়েস্ট রিজেক্ট!**\n💰 {amount} ৳ আপনার মেইন ব্যালেন্সে ফেরত দেওয়া হয়েছে।")
+        except: 
+            pass
             
         await call.message.edit_text(call.message.text + "\n\n❌ **Status: Rejected (টাকা ফেরত দেওয়া হয়েছে)**")
-        await call.answer("রিকোয়েস্ট রিজেক্ট করা হয়েছে।", show_alert=True)
-    
+        await call.answer("রিকোয়েস্ট রিজেক্ট করা হয়েছে এবং টাকা ফেরত দেওয়া হয়েছে।", show_alert=True)
+        
 # --- ১. রেফারেল বাটন হ্যান্ডলার ---
 @dp.message_handler(lambda message: message.text == "👥 Referral")
 async def referral_command(message: types.Message):
