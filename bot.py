@@ -46,6 +46,12 @@ db.commit()
 cursor.execute('''CREATE TABLE IF NOT EXISTS user_history 
                   (user_id INTEGER, message_text TEXT, date TEXT)''')
 db.commit()
+# এই লাইনটি খুঁজে বের করুন এবং referred_by যোগ করুন
+cursor.execute('''CREATE TABLE IF NOT EXISTS users 
+                  (user_id INTEGER PRIMARY KEY, username TEXT, balance REAL DEFAULT 0.0, 
+                  referral_count INTEGER DEFAULT 0, referred_by INTEGER)''')
+db.commit()
+
 # ডাটাবেজে username কলাম যোগ করা (একবার রান হলেই হবে)
 try:
     cursor.execute("ALTER TABLE users ADD COLUMN username TEXT")
@@ -102,6 +108,25 @@ async def start(message: types.Message, state: FSMContext):
         ON CONFLICT(user_id) DO UPDATE SET username = excluded.username
     """, (user_id, username))
     db.commit()
+    
+    # --- এখানে নিচের কোডটুকু পেস্ট করুন ---
+    args = message.get_args()
+    # চেক করা হচ্ছে ইউজার নতুন কি না এবং লিংকে রেফারার আইডি আছে কি না
+    cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
+    if not cursor.fetchone() and args and args.isdigit():
+        referrer_id = int(args)
+        if referrer_id != user_id:  # নিজে নিজেকে রেফার করা বন্ধ
+            # রেফারারের কাউন্ট ১ বাড়িয়ে দেওয়া
+            cursor.execute("UPDATE users SET referral_count = referral_count + 1 WHERE user_id = ?", (referrer_id,))
+            db.commit()
+            try:
+                await bot.send_message(referrer_id, "🔔 **New Referral!** Someone joined using your link.")
+            except:
+                pass
+    # --- রেফারেল লজিক শেষ ---
+
+    # ... পরের কোড (১০৭ নম্বর লাইন থেকে শুরু)
+    inline_kb = types.InlineKeyboardMarkup(row_width=2)
 
 
     inline_kb = types.InlineKeyboardMarkup(row_width=2)
@@ -1065,7 +1090,76 @@ async def process_withdraw_callback(callback_query: types.CallbackQuery):
         except:
             pass
         await callback_query.answer("সফলভাবে রিজেক্ট হয়েছে।")
-                                     
+      # --- ১. রেফারেল কমান্ড (Referral Button Click) ---
+@dp.message_handler(lambda message: message.text == "👥 Referral")
+async def referral_command(message: types.Message):
+    user_id = message.from_user.id
+    
+    # ইউজার ব্লকড কি না চেক
+    if await is_blocked(user_id):
+        return await message.answer("❌ দুঃখিত, আপনি বর্তমানে ব্লকড আছেন!")
+        
+    # ডাটাবেস থেকে তথ্য আনা
+    cursor.execute("SELECT referral_count FROM users WHERE user_id = ?", (user_id,))
+    res = cursor.fetchone()
+    ref_count = res[0] if res and res[0] is not None else 0
+    
+    bot_info = await bot.get_me()
+    refer_link = f"https://t.me/{bot_info.username}?start={user_id}"
+    
+    # ইনলাইন বাটন (নিয়ম দেখার জন্য)
+    inline_kb = types.InlineKeyboardMarkup()
+    inline_kb.add(types.InlineKeyboardButton("📜 রেফারেল নিয়মাবলী", callback_data="ref_rules_view"))
+
+    text = (
+        f"🎊 **রেফারেল ড্যাশবোর্ড** 🎊\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👤 **আপনার মোট রেফার:** `{ref_count}` জন\n\n"
+        f"🔗 **আপনার ব্যক্তিগত রেফার লিঙ্ক:**\n`{refer_link}`\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🎁 **অফার:** প্রতি সফল রেফারে পাবেন **৫ টাকা** বোনাস!\n\n"
+        f"📢 আপনার বন্ধুদের সাথে লিঙ্কটি শেয়ার করুন এবং আয় শুরু করুন। ✨\n\n"
+        f"👇 নিয়মগুলো জানতে নিচের বাটনে ক্লিক করুন।"
+    )
+    
+    await message.answer(text, reply_markup=inline_kb, parse_mode="Markdown")
+
+
+# --- ২. রেফারেল নিয়মাবলী (Inline Rules) ---
+@dp.callback_query_handler(text="ref_rules_view")
+async def show_ref_rules(call: types.CallbackQuery):
+    rules_text = (
+        "📜 **রেফারেল এর শর্তাবলী** 📜\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        "১️⃣ আপনার পাঠানো লিঙ্কে ক্লিক করে কেউ বোট 'Start' করলে আপনার রেফার কাউন্ট হবে।\n\n"
+        "২️⃣ প্রতি ভ্যালিড রেফারের জন্য **৫ টাকা** বোনাস আপনার ব্যালেন্সে যোগ করা হবে।\n\n"
+        "৩️⃣ রেফার করা ইউজার যখন অন্তত **৫০ টাকার** কাজ সম্পন্ন করবে, তখনই আপনি বোনাসটি পাবেন।\n\n"
+        "৪️⃣ **সতর্কতা:** নিজের লিঙ্কে নিজে ক্লিক করা বা ফেক আইডি ব্যবহার করলে আপনার অ্যাকাউন্ট **পার্মানেন্ট ব্লক** করা হবে।\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "সতর্কতার সাথে কাজ করুন। ধন্যবাদ! ❤️"
+    )
+    await call.answer() # পপআপ বন্ধ করা
+    await bot.send_message(call.from_user.id, rules_text, parse_mode="Markdown")
+
+
+# --- ৩. স্টার্ট হ্যান্ডলারের ভেতরে রেফারেল লজিক (নিচের অংশটি আপনার Start ফাংশনে বসাবেন) ---
+# আপনার @dp.message_handler(commands=['start']) এর ভেতর ডাটাবেস কমিট হওয়ার পর এটি বসান:
+
+    # (এই অংশটি আপনার বর্তমান স্টার্ট হ্যান্ডলারের ভেতর থাকবে)
+    args = message.get_args()
+    cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
+    if not cursor.fetchone() and args and args.isdigit():
+        referrer_id = int(args)
+        if referrer_id != user_id:
+            # রেফারারের কাউন্ট বাড়ানো
+            cursor.execute("UPDATE users SET referral_count = referral_count + 1 WHERE user_id = ?", (referrer_id,))
+            db.commit()
+            # রেফারারকে অভিনন্দন জানানো
+            try:
+                await bot.send_message(referrer_id, "🔔 **অভিনন্দন!**\n\nআপনার রেফারেল লিঙ্ক ব্যবহার করে একজন নতুন ইউজার জয়েন করেছে। 🥳")
+            except:
+                pass
+        
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
