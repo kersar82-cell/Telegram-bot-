@@ -58,6 +58,18 @@ try:
     db.commit()
 except:
     pass
+    # --- ধাপ ১: ডাটাবেসে পেমেন্ট মেথড কলাম যোগ করা ---
+try:
+    cursor.execute("ALTER TABLE users ADD COLUMN bkash_num TEXT")
+    cursor.execute("ALTER TABLE users ADD COLUMN nagad_num TEXT")
+    cursor.execute("ALTER TABLE users ADD COLUMN rocket_num TEXT")
+    cursor.execute("ALTER TABLE users ADD COLUMN binance_id TEXT")
+    cursor.execute("ALTER TABLE users ADD COLUMN recharge_num TEXT")
+    db.commit()
+    print("Database columns added successfully!")
+except Exception as e:
+    # যদি কলামগুলো আগে থেকেই থাকে তবে এই এরর ইগনোর করবে
+    print(f"Note: {e}")
     
 
 class BotState(StatesGroup):
@@ -75,6 +87,15 @@ class BotState(StatesGroup):
     waiting_for_admin_msg = State()
     waiting_for_team_name = State()
     waiting_for_referrer_info = State() # এটি নতুন যোগ করুন
+
+    # পেমেন্ট মেথড সেভ করার জন্য নতুন স্টেট
+    waiting_for_payment_type = State()  # মোবাইল রিচার্জ নাকি সেন্ড মানি
+    waiting_for_recharge_num = State()  # রিচার্জ নম্বর নেওয়ার জন্য
+    waiting_for_method_select = State() # বিকাশ/নগদ/রকেট/বাইনান্স সিলেক্ট
+    waiting_for_method_num = State()    # ওই মেথডগুলোর নম্বর নেওয়ার জন্য
+    
+    # উইথড্র করার জন্য স্টেট
+    waiting_for_withdraw_type = State() # রিচার্জে নেবে নাকি সেন্ড মানিতে
 
 async def is_blocked(user_id):
     cursor.execute("SELECT user_id FROM blacklist WHERE user_id=?", (user_id,))
@@ -286,100 +307,260 @@ async def handle_file(message: types.Message, state: FSMContext):
     
     await message.answer("✅ আপনার ফাইলটি জমা হয়েছে। \n🔥এডমিন চেক করে ব্যালেন্স এড করে দিবে।")
     await state.finish()
-# ==========================================
-# ৩. উইথড্র ও পেমেন্ট মেথড লজিক (Fixed Version)
-# ==========================================
+# --- ধাপ ২ এর উইথড্র মেইন মেনু ---
 @dp.message_handler(lambda message: message.text == "💴Withdraw")
-async def withdraw_process(message: types.Message):
-    # ইউজার আইডি নেওয়া হলো
-    u_id = message.from_user.id 
-    if await is_blocked(message.from_user.id):
-        return await message.answer("❌ দুঃখিত, আপনি ব্লকড! আপনি আর কাজ জমা দিতে পারবেন না। /nএডমিনের সাথে কথা বলুন 👍")
+async def withdraw_main_menu(message: types.Message):
+    user_id = message.from_user.id
     
-    # ডাটাবেস থেকে তথ্য আনা (সঠিক স্পেসিং সহ)
-    cursor.execute("SELECT balance, address FROM users WHERE user_id=?", (u_id,))
+    # ইনলাইন কিবোর্ড তৈরি
+    keyboard = types.InlineKeyboardMarkup(row_width=2)
+    keyboard.add(
+        types.InlineKeyboardButton("➕ Add Payment Method", callback_data="add_method"),
+        types.InlineKeyboardButton("💸 Withdraw", callback_data="start_withdraw"),
+        types.InlineKeyboardButton("🔄 Refresh", callback_data="refresh_wd")
+    )
+    
+    text = (
+        "💳 **উইথড্র ও পেমেন্ট সেটিংস**\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "নিচের বাটনগুলো ব্যবহার করে আপনার পেমেন্ট নম্বর সেভ করুন অথবা টাকা উত্তোলনের আবেদন করুন। ✨"
+    )
+    await message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
+       # --- ১. পেমেন্ট মেথড টাইপ সিলেকশন (Recharge vs Send Money) ---
+@dp.callback_query_handler(text="add_method")
+async def select_method_type(call: types.CallbackQuery):
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("📱 Mobile Recharge", callback_data="set_recharge"),
+        types.InlineKeyboardButton("💸 Send Money", callback_data="set_sendmoney")
+    )
+    await call.message.edit_text("আপনি কোন মাধ্যমে নম্বর সেভ করতে চান? 👇", reply_markup=kb)
+# --- ১. মোবাইল রিচার্জ নম্বর সেভ করা ---
+@dp.message_handler(state=BotState.waiting_for_recharge_num)
+async def save_recharge_db(message: types.Message, state: FSMContext):
+    num = message.text
+    user_id = message.from_user.id
+    username = message.from_user.username or "No Username"
+    
+    # ডাটাবেসে সেভ করা
+    cursor.execute("UPDATE users SET recharge_num = ? WHERE user_id = ?", (num, user_id))
+    db.commit()
+    
+    # অ্যাডমিনকে জানানো
+    admin_text = (
+        f"📱 **নতুন রিচার্জ নম্বর সেট!**\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 ইউজার: {message.from_user.full_name}\n"
+        f"🆔 আইডি: `{user_id}`\n"
+        f"🔗 ইউজারনেম: @{username}\n"
+        f"📞 নম্বর: `{num}`"
+    )
+    await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
+    
+    await message.answer(f"✅ আপনার **Mobile Recharge** নম্বর `{num}` সফলভাবে সেভ হয়েছে!", reply_markup=main_menu())
+    await state.finish()
+
+# --- ২. মোবাইল রিচার্জ নম্বর নেওয়ার জন্য ---
+@dp.callback_query_handler(text="set_recharge")
+async def ask_recharge_num(call: types.CallbackQuery):
+    await BotState.waiting_for_recharge_num.set()
+    await call.message.answer("📱 আপনার **Mobile Recharge** নম্বরটি লিখুন:")
+    await call.answer()
+
+# --- ৩. সেন্ড মানি মেথড সিলেকশন (৪টি অপশন) ---
+@dp.callback_query_handler(text="set_sendmoney")
+async def set_sendmoney_options(call: types.CallbackQuery):
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("bKash 🟢", callback_data="save_bkash"),
+        types.InlineKeyboardButton("Nagad 🟠", callback_data="save_nagad"),
+        types.InlineKeyboardButton("Rocket 💜", callback_data="save_rocket"),
+        types.InlineKeyboardButton("Binance 🟡", callback_data="save_binance")
+    )
+    await call.message.edit_text("✨ আপনি কোন মেথডটি এড বা আপডেট করতে চান?", reply_markup=kb)
+
+# --- ৪. সেন্ড মানি নম্বর চাওয়ার লজিক ---
+@dp.callback_query_handler(lambda c: c.data.startswith('save_'))
+async def ask_for_num(call: types.CallbackQuery, state: FSMContext):
+    provider = call.data.split('_')[1]
+    await state.update_data(p_type=provider)
+    await BotState.waiting_for_method_num.set()
+    await call.message.answer(f"🔢 আপনার **{provider.upper()}** নম্বর বা ID টি লিখুন:")
+    await call.answer()
+    # --- ১. মোবাইল রিচার্জ নম্বর সেভ করা ---
+@dp.message_handler(state=BotState.waiting_for_recharge_num)
+async def save_recharge_db(message: types.Message, state: FSMContext):
+    num = message.text
+    user_id = message.from_user.id
+    username = message.from_user.username or "No Username"
+    
+    # ডাটাবেসে সেভ করা
+    cursor.execute("UPDATE users SET recharge_num = ? WHERE user_id = ?", (num, user_id))
+    db.commit()
+    
+    # অ্যাডমিনকে জানানো
+    admin_text = (
+        f"📱 **নতুন রিচার্জ নম্বর সেট!**\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 ইউজার: {message.from_user.full_name}\n"
+        f"🆔 আইডি: `{user_id}`\n"
+        f"🔗 ইউজারনেম: @{username}\n"
+        f"📞 নম্বর: `{num}`"
+    )
+    await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
+    
+    await message.answer(f"✅ আপনার **Mobile Recharge** নম্বর `{num}` সফলভাবে সেভ হয়েছে!", reply_markup=main_menu())
+    await state.finish()
+
+# --- ২. সেন্ড মানি (বিকাশ/নগদ/রকেট/বাইনান্স) নম্বর সেভ করা ---
+@dp.message_handler(state=BotState.waiting_for_method_num)
+async def save_sendmoney_db(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    p_type = data.get('p_type') # bkash, nagad, etc.
+    num = message.text
+    user_id = message.from_user.id
+    username = message.from_user.username or "No Username"
+    
+    # কোন কলামে সেভ হবে তা নির্ধারণ করা
+    column = f"{p_type}_num" if p_type != "binance" else "binance_id"
+    
+    # ডাটাবেসে সেভ করা
+    cursor.execute(f"UPDATE users SET {column} = ? WHERE user_id = ?", (num, user_id))
+    db.commit()
+    
+    # অ্যাডমিনকে জানানো
+    admin_text = (
+        f"💸 **নতুন পেমেন্ট মেথড সেট!**\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 ইউজার: {message.from_user.full_name}\n"
+        f"🆔 আইডি: `{user_id}`\n"
+        f"💳 মেথড: {p_type.upper()}\n"
+        f"🔢 নম্বর/ID: `{num}`"
+    )
+    await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
+    
+    await message.answer(f"✅ আপনার **{p_type.upper()}** তথ্য সফলভাবে সেভ হয়েছে!", reply_markup=main_menu())
+    await state.finish()
+    # --- ১. উইথড্র বাটন ক্লিক করলে অপশন দেখানো ---
+@dp.callback_query_handler(text="start_withdraw")
+async def withdraw_selection(call: types.CallbackQuery):
+    user_id = call.from_user.id
+    
+    # ডাটাবেস থেকে ইউজারের ব্যালেন্স এবং সেভ করা নম্বরগুলো চেক করা
+    cursor.execute("SELECT balance, recharge_num, bkash_num, nagad_num, rocket_num, binance_id FROM users WHERE user_id=?", (user_id,))
     res = cursor.fetchone()
     
     if not res:
-        # যদি ইউজার নতুন হয়
-        cursor.execute("INSERT INTO users (user_id, balance) VALUES (?, ?)", (u_id, 0))
-        db.commit()
-        balance, address = 0, None
-    else:
-        balance, address = res[0], res[1]
+        return await call.answer("❌ আপনার তথ্য পাওয়া যায়নি। অনুগ্রহ করে /start দিন।")
+    
+    balance, recharge, bkash, nagad, rocket, binance = res
+    
+    # মিনিমাম উইথড্র লিমিট চেক (ধরা যাক ২০ টাকা)
+    if balance < 20:
+        return await call.answer(f"❌ আপনার ব্যালেন্স পর্যাপ্ত নয়! (মিনিমাম ২০ টাকা লাগবে। বর্তমান: {balance} ৳)", show_alert=True)
 
-    if not address:
-        await message.answer("💌আপনার পেমেন্ট মেথড দিন ।\n 🗣️(যেমন: বিকাশ/নগদ/রকেট/বাইনান্স এড্রেস)\n👀 মেথড পাঠানোর ফরমেট: \n🟢 Bikash :01789*****\n 🟢Nagad :0197976***\n 🟢Binance : 0givkbgbj****")
-        await BotState.waiting_for_address.set()
-    else:
-        keyboard = types.InlineKeyboardMarkup()
-        keyboard.add(types.InlineKeyboardButton("Change Payment Method ⚙️", callback_data="change_method"))
-        
-        await message.answer(f"💰 আপনার বর্তমান ব্যালেন্স: {balance} ৳\n📍 বর্তমান পেমেন্ট এড্রেস: {address}\n\n🚨আপনি কত টাকা উইথড্র করতে চান লিখুন\n💡 (অবশ্যই ৫০ টাকার উপরে হতে হবে ।):", reply_markup=keyboard)
-        await BotState.waiting_for_withdraw_amount.set()
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("📱 Mobile Recharge", callback_data="wd_recharge"),
+        types.InlineKeyboardButton("💸 Send Money", callback_data="wd_sendmoney")
+    )
+    
+    await call.message.edit_text(
+        f"💰 **আপনার বর্তমান ব্যালেন্স:** `{balance:.2f} ৳`\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "আপনি কোন মাধ্যমে পেমেন্ট নিতে চান? সিলেক্ট করুন:",
+        reply_markup=kb
+    )
 
-@dp.callback_query_handler(text="change_method", state="*")
-async def change_method_callback(call: types.CallbackQuery, state: FSMContext):
-    await state.finish()
-    await call.message.answer("আপনার নতুন পেমেন্ট মেথড বা নম্বরটি দিন:")
-    await BotState.waiting_for_address.set()
+# --- ২. উইথড্র মেথড সিলেক্ট করার পর টাকার পরিমাণ চাওয়া ---
+@dp.callback_query_handler(lambda c: c.data.startswith('wd_'))
+async def ask_withdraw_amount(call: types.CallbackQuery, state: FSMContext):
+    w_type = call.data.split('_')[1] # recharge / sendmoney
+    user_id = call.from_user.id
+    
+    # ডাটাবেস থেকে তথ্য পুনরায় চেক করা
+    cursor.execute(f"SELECT {w_type}_num FROM users WHERE user_id=?" if w_type == 'recharge' else "SELECT bkash_num, nagad_num, rocket_num, binance_id FROM users WHERE user_id=?", (user_id,))
+    saved_data = cursor.fetchone()
+
+    # নম্বর সেভ করা না থাকলে উইথড্র করতে দিবে না
+    if not any(saved_data) if isinstance(saved_data, tuple) else not saved_data:
+        return await call.message.answer("⚠️ আপনার কোনো পেমেন্ট নম্বর সেভ করা নেই! \nআগে 'Add Payment Method' বাটন থেকে নম্বর সেভ করুন।")
+
+    await state.update_data(withdraw_type=w_type)
+    await BotState.waiting_for_withdraw_amount.set()
+    
+    await call.message.answer(
+        f"💵 আপনি কত টাকা উইথড্র করতে চান?\n"
+        f"পরিমাণটি সংখ্যায় লিখুন (যেমন: ৫০):"
+    )
     await call.answer()
-
-@dp.message_handler(state=BotState.waiting_for_address)
-async def save_address(message: types.Message, state: FSMContext):
-    cursor.execute("UPDATE users SET address=? WHERE user_id=?", (message.text, message.from_user.id))
-    db.commit()
-    await message.answer(f"✅ সফল! আপনার পেমেন্ট এড্রেস আপডেট হয়েছে।\n🔥এখন 'Withdraw' বাটনে ক্লিক করে টাকা তুলতে পারেন।", reply_markup=main_menu())
-    await state.finish()
-
+    # --- ১. উইথড্র পরিমাণ গ্রহণ এবং অ্যাডমিনকে পাঠানো ---
 @dp.message_handler(state=BotState.waiting_for_withdraw_amount)
-async def withdraw_done(message: types.Message, state: FSMContext):
-    try:
-        amount = float(message.text)
-        u_id = message.from_user.id
-        
-        cursor.execute("SELECT balance, address FROM users WHERE user_id=?", (u_id,))
-        res = cursor.fetchone()
-        balance, address = res[0], res[1]
+async def process_withdraw_final(message: types.Message, state: FSMContext):
+    if not message.text.isdigit():
+        return await message.answer("❌ অনুগ্রহ করে সঠিক সংখ্যা লিখুন (যেমন: ১০০)")
 
-        if amount > balance:
-            await message.answer("❌ পর্যাপ্ত ব্যালেন্স নেই!")
-        elif amount < 50:
-            await message.answer("❌ সর্বনিম্ন ৫০ টাকা উইথড্র করতে হবে।")
-        else:
-            # ডাটাবেসে রিকোয়েস্ট সেভ করা
-            cursor.execute("INSERT INTO withdraw_requests (user_id, amount, status) VALUES (?, ?, 'pending')", 
-                           (u_id, amount))
-            req_id = cursor.lastrowid
-            
-            # ব্যালেন্স কাটা
-            new_balance = balance - amount
-            cursor.execute("UPDATE users SET balance=? WHERE user_id=?", (new_balance, u_id))
-            db.commit()
-            
-            # অ্যাডমিনের জন্য বাটন
-            keyboard = types.InlineKeyboardMarkup()
-            btn_approve = types.InlineKeyboardButton("✅ Approve", callback_data=f"wd_approve_{req_id}")
-            btn_reject = types.InlineKeyboardButton("❌ Reject", callback_data=f"wd_reject_{req_id}")
-            keyboard.add(btn_approve, btn_reject)
-            
-            # অ্যাডমিনকে জানানো (FILE_ADMIN_ID ব্যবহার করা হয়েছে আপনার ফাইল অনুযায়ী)
-            admin_msg = (f"🔔 **নতুন উইথড্র রিকোয়েস্ট!**\n\n"
-                         f"🆔 আইডি: `{u_id}`\n"
-                         f"💵 পরিমাণ: {amount} ৳\n"
-                         f"📍 এড্রেস: {address}\n"
-                         f"🔢 রিকোয়েস্ট আইডি: {req_id}")
-            
-            await bot.send_message(ADMIN_ID, admin_msg, reply_markup=keyboard, parse_mode="Markdown")
-            
-            # ইউজারকে জানানো
-            await message.answer(f"✅ উইথড্র রিকোয়েস্ট পাঠানো হয়েছে। {amount} ৳ কেটে নেওয়া হয়েছে।\n💰 বর্তমান ব্যালেন্স: {new_balance} ৳\n🕒 অ্যাডমিন এপ্রুভ করলে আপনি মেসেজ পাবেন।", reply_markup=main_menu())
-        
-        await state.finish()
-    except Exception as e:
-        await message.answer("❌ ভুল ইনপুট। শুধু সংখ্যা লিখুন।")
-        await state.finish()
+    amount = int(message.text)
+    user_id = message.from_user.id
+    
+    # ডাটাবেস থেকে ইউজারের তথ্য আনা (ব্যালেন্স এবং সব পেমেন্ট মেথড)
+    cursor.execute("SELECT balance, bkash_num, nagad_num, rocket_num, binance_id, recharge_num FROM users WHERE user_id=?", (user_id,))
+    res = cursor.fetchone()
+    balance, bkash, nagad, rocket, binance, recharge = res
 
+    # ব্যালেন্স চেক
+    if amount > balance:
+        return await message.answer(f"❌ আপনার ব্যালেন্স পর্যাপ্ত নয়! বর্তমান ব্যালেন্স: {balance} ৳")
+    
+    if amount < 20: # মিনিমাম লিমিট ২০ টাকা
+        return await message.answer("❌ দুঃখিত, কমপক্ষে ২০ টাকা উইথড্র দিতে হবে।")
+
+    # ব্যালেন্স থেকে টাকা কেটে নেওয়া
+    new_balance = balance - amount
+    cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (new_balance, user_id))
+    db.commit()
+
+    data = await state.get_data()
+    w_type = data.get('withdraw_type') # recharge / sendmoney
+
+    # অ্যাডমিনকে পাঠানোর জন্য একটি রিকোয়েস্ট আইডি (ইউনিক আইডি)
+    import random
+    req_id = random.randint(1000, 9999)
+
+    # অ্যাডমিন নোটিফিকেশন মেসেজ
+    admin_text = (
+        f"💰 **নতুন উইথড্র রিকোয়েস্ট!** (ID: #{req_id})\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 ইউজার: {message.from_user.full_name}\n"
+        f"🆔 আইডি: `{user_id}`\n"
+        f"💵 পরিমাণ: **{amount} ৳**\n"
+        f"💳 ধরণ: {'Mobile Recharge' if w_type == 'recharge' else 'Send Money'}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏠 **ইউজারের সেভ করা মেথডসমূহ:**\n"
+        f"📱 Recharge: `{recharge or 'Not Set'}`\n"
+        f"🟢 bKash: `{bkash or 'Not Set'}`\n"
+        f"🟠 Nagad: `{nagad or 'Not Set'}`\n"
+        f"💜 Rocket: `{rocket or 'Not Set'}`\n"
+        f"🟡 Binance: `{binance or 'Not Set'}`\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"পেমেন্ট করে নিচের বাটনে ক্লিক করুন 👇"
+    )
+
+    # অ্যাডমিন বাটন
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("✅ Approve", callback_data=f"wd_approve_{user_id}_{amount}"),
+           types.InlineKeyboardButton("❌ Reject", callback_data=f"wd_reject_{user_id}_{amount}"))
+
+    await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb, parse_mode="Markdown")
+    
+    await message.answer(
+        f"✅ **আপনার উইথড্র রিকোয়েস্ট জমা হয়েছে!**\n"
+        f"💰 পরিমাণ: {amount} ৳\n"
+        f"⏳ অ্যাডমিন পেমেন্ট চেক করে এপ্রুভ করার পর আপনি নোটিফিকেশন পাবেন। ধন্যবাদ!",
+        reply_markup=main_menu()
+    )
+    await state.finish()
+    
 # ৪. এডমিন প্যানেল
 # ==========================================
 @dp.message_handler(commands=['check'])
