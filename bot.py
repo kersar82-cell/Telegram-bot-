@@ -93,58 +93,44 @@ def main_menu():
     return keyboard
     
     
-# /start কমান্ডে মেইন মেনু ও বাটন
+# /start কমান্ডে মেইন মেনু, রেফারেল ও ওয়েলকাম মেসেজ
 @dp.message_handler(commands=['start'], state="*")
 async def start(message: types.Message, state: FSMContext):
     await state.finish()
     
     user_id = message.from_user.id
-    # ইউজারনেম ফরম্যাট করা
     username = f"@{message.from_user.username}" if message.from_user.username else "No_Username"
-    
-    # ইউজার আইডি এবং ইউজারনেম সেভ বা আপডেট করা
-    cursor.execute("""
-        INSERT INTO users (user_id, username) VALUES (?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET username = excluded.username
-    """, (user_id, username))
-    db.commit()
-    
-    # --- এখানে নিচের কোডটুকু পেস্ট করুন ---
-    # --- ৩. স্টার্ট হ্যান্ডলার (এটি আপনার Start ফাংশনের ভেতর আপডেট করুন) ---
-@dp.message_handler(commands=['start'], state="*")
-async def start(message: types.Message, state: FSMContext):
-    await state.finish()
-    user_id = message.from_user.id
     args = message.get_args()
     
-    # প্রথমে চেক করি ইউজার আগে থেকে আছে কি না
+    # ১. প্রথমে চেক করি ইউজার আগে থেকে ডাটাবেসে আছে কি না
     cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
     existing_user = cursor.fetchone()
 
-    # যদি ইউজার একদম নতুন হয় এবং রেফারেল লিংকে আসে
+    # ২. যদি ইউজার একদম নতুন হয় (ডাটাবেসে নেই)
     if not existing_user:
+        # যদি সে কারো রেফারেল লিংকে ক্লিক করে আসে
         if args and args.isdigit():
             referrer_id = int(args)
             if referrer_id != user_id:
                 # রেফারারের কাউন্ট ১ বাড়িয়ে দেওয়া
                 cursor.execute("UPDATE users SET referral_count = referral_count + 1 WHERE user_id = ?", (referrer_id,))
-                db.commit() # এটা খুব গুরুত্বপূর্ণ
+                db.commit()
                 
+                # রেফারারকে অভিনন্দন জানানো
                 try:
-                    await bot.send_message(referrer_id, "🔔 **অভিনন্দন!** আপনার লিঙ্কে একজন নতুন ইউজার জয়েন করেছে। 🥳")
-                except: pass
+                    await bot.send_message(referrer_id, "🔔 **অভিনন্দন!**\n\nআপনার রেফারেল লিঙ্ক ব্যবহার করে একজন নতুন ইউজার জয়েন করেছে। 🥳")
+                except:
+                    pass
         
         # নতুন ইউজারকে ডাটাবেসে সেভ করা
-        cursor.execute("INSERT INTO users (user_id, username) VALUES (?, ?)", (user_id, message.from_user.username))
+        cursor.execute("INSERT INTO users (user_id, username) VALUES (?, ?)", (user_id, username))
+        db.commit()
+    else:
+        # যদি ইউজার আগে থেকেই থাকে, শুধু ইউজারনেম আপডেট করা (ঐচ্ছিক)
+        cursor.execute("UPDATE users SET username = ? WHERE user_id = ?", (username, user_id))
         db.commit()
 
-    # বাকি কোড (যেমন মেইন মেনু দেখানো) এখানে থাকবে...
-    await message.answer("✅ বোট স্টার্ট হয়েছে!", reply_markup=main_menu())
-
-    # ... পরের কোড (১০৭ নম্বর লাইন থেকে শুরু)
-    inline_kb = types.InlineKeyboardMarkup(row_width=2)
-
-
+    # ৩. ইনলাইন বাটন ও ওয়েলকাম মেসেজ সেটআপ
     inline_kb = types.InlineKeyboardMarkup(row_width=2)
     help_button = types.InlineKeyboardButton(text="🆘 Contact Support", url="https://t.me/instafbhub_support") 
     inline_kb.add(help_button)
@@ -155,9 +141,9 @@ async def start(message: types.Message, state: FSMContext):
 📌 Instagram Mother: ৭ ৳
 📌 Facebook FBc00Fnd: ৫.৮০ ৳
 
-Support: @Dinanhaji"""
+🏠 Support: @Dinanhaji"""
 
-    # এই লাইনগুলোই এরর দিচ্ছিল, এখন এগুলো async def-এর ভেতরে আছে
+    # ৪. ইউজারকে মেসেজ পাঠানো
     await message.answer(welcome_text, reply_markup=inline_kb, parse_mode="Markdown")
     await message.answer("✅ আপনার কাজের ধরণ বেছে নিন:", reply_markup=main_menu())
     
