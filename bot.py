@@ -1194,34 +1194,34 @@ async def list_blocked_users(message: types.Message):
         response += f"{index}. ID: `{uid}` | User: {username}\n"
 
     await message.answer(response, parse_mode="Markdown")
-# --- উইথড্র অ্যাপ্রুভ এবং রিজেক্ট হ্যান্ডলার (সংশোধিত) ---
+# --- অ্যাডমিন যখন Approve বা Reject বাটনে ক্লিক করবে ---
 @dp.callback_query_handler(lambda c: c.data.startswith('wd_approve_') or c.data.startswith('wd_reject_'), user_id=ADMIN_ID)
-async def handle_withdraw_actions(call: types.CallbackQuery):
-    # ডাটা আলাদা করা
+async def handle_withdraw_actions_final(call: types.CallbackQuery):
+    # ডাটা আলাদা করা (wd_approve_USERID_AMOUNT)
     data = call.data.split('_')
-    action = data[1]  # approve অথবা reject
+    action = data[1] # approve অথবা reject
     target_uid = int(data[2])
     amount = int(data[3])
 
     if action == "approve":
-        # ইউজারকে জানানো
+        # ১. ইউজারের কাছে মেসেজ পাঠানো
         try:
-            await bot.send_message(target_uid, f"✅ **আপনার উইথড্র রিকোয়েস্ট অ্যাপ্রুভ হয়েছে!**\n💰 পরিমাণ: {amount} ৳\nআপনার টাকা পাঠিয়ে দেওয়া হয়েছে। ধন্যবাদ।")
-        except:
+            await bot.send_message(target_uid, f"✅ **আপনার উইথড্র রিকোয়েস্ট অ্যাপ্রুভ হয়েছে!**\n💰 পরিমাণ: {amount} ৳\nআপনার পেমেন্ট সফলভাবে পাঠানো হয়েছে। ধন্যবাদ।")
+        except: 
             pass
             
-        # অ্যাডমিন মেসেজ আপডেট করা
+        # ২. অ্যাডমিন প্যানেলে মেসেজটি আপডেট করা (এখানে আর কিছু চাইবে না)
         await call.message.edit_text(call.message.text + f"\n\n✅ **Status: Approved**")
-        await call.answer("সফলভাবে এপ্রুভ করা হয়েছে।", show_alert=True)
+        await call.answer("পেমেন্ট অ্যাপ্রুভ করা হয়েছে।", show_alert=True)
 
     elif action == "reject":
-        # ব্যালেন্স ফেরত দেওয়া
+        # রিজেক্ট করলে টাকা ইউজারের একাউন্টে ফেরত দেওয়া
         cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, target_uid))
         db.commit()
         
         try:
-            await bot.send_message(target_uid, f"❌ **উইথড্র রিকোয়েস্ট রিজেক্ট!**\n💰 {amount} ৳ আপনার ব্যালেন্সে ফেরত দেওয়া হয়েছে।")
-        except:
+            await bot.send_message(target_uid, f"❌ **আপনার উইথড্র রিকোয়েস্ট রিজেক্ট করা হয়েছে।**\n💰 {amount} ৳ আপনার ব্যালেন্সে ফেরত দেওয়া হয়েছে।")
+        except: 
             pass
             
         await call.message.edit_text(call.message.text + "\n\n❌ **Status: Rejected (টাকা ফেরত দেওয়া হয়েছে)**")
