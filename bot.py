@@ -577,9 +577,12 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
         f"পেমেন্ট করে নিচের বাটনে ক্লিক করুন 👇"
     )
 
+ # অ্যাডমিনকে পাঠানোর কিবোর্ড অংশটুকু এভাবে লিখুন
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("✅ Approve", callback_data=f"wd_approve_{user_id}_{amount}"),
-           types.InlineKeyboardButton("❌ Reject", callback_data=f"wd_reject_{user_id}_{amount}"))
+    kb.add(
+    types.InlineKeyboardButton("✅ Approve", callback_data=f"admin_payment_approve_{user_id}_{amount}"),
+    types.InlineKeyboardButton("❌ Reject", callback_data=f"admin_payment_reject_{user_id}_{amount}")
+    )
 
     await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb, parse_mode="Markdown")
     
@@ -1194,65 +1197,6 @@ async def list_blocked_users(message: types.Message):
         response += f"{index}. ID: `{uid}` | User: {username}\n"
 
     await message.answer(response, parse_mode="Markdown")
-# --- অ্যাডমিন যখন Approve বা Reject বাটনে ক্লিক করবে ---
-@dp.callback_query_handler(lambda c: c.data.startswith('wd_approve_') or c.data.startswith('wd_reject_'), user_id=ADMIN_ID)
-async def handle_withdraw_actions_final(call: types.CallbackQuery):
-    # ডাটা আলাদা করা (wd_approve_USERID_AMOUNT)
-    data = call.data.split('_')
-    action = data[1] # approve অথবা reject
-    target_uid = int(data[2])
-    amount = int(data[3])
-
-    if action == "approve":
-        # ১. ইউজারের কাছে মেসেজ পাঠানো
-        try:
-            await bot.send_message(target_uid, f"✅ **আপনার উইথড্র রিকোয়েস্ট অ্যাপ্রুভ হয়েছে!**\n💰 পরিমাণ: {amount} ৳\nআপনার পেমেন্ট সফলভাবে পাঠানো হয়েছে। ধন্যবাদ।")
-        except: 
-            pass
-            
-        # ২. অ্যাডমিন প্যানেলে মেসেজটি আপডেট করা (এখানে আর কিছু চাইবে না)
-        await call.message.edit_text(call.message.text + f"\n\n✅ **Status: Approved**")
-        await call.answer("পেমেন্ট অ্যাপ্রুভ করা হয়েছে।", show_alert=True)
-
-    elif action == "reject":
-        # রিজেক্ট করলে টাকা ইউজারের একাউন্টে ফেরত দেওয়া
-        cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, target_uid))
-        db.commit()
-        
-        try:
-            await bot.send_message(target_uid, f"❌ **আপনার উইথড্র রিকোয়েস্ট রিজেক্ট করা হয়েছে।**\n💰 {amount} ৳ আপনার ব্যালেন্সে ফেরত দেওয়া হয়েছে।")
-        except: 
-            pass
-            
-        await call.message.edit_text(call.message.text + "\n\n❌ **Status: Rejected (টাকা ফেরত দেওয়া হয়েছে)**")
-        await call.answer("রিকোয়েস্ট রিজেক্ট করা হয়েছে।", show_alert=True)
-    
-# --- ১. রেফারেল বাটন হ্যান্ডলার ---
-@dp.message_handler(lambda message: message.text == "👥 Referral")
-async def referral_command(message: types.Message):
-    user_id = message.from_user.id
-    
-    # ডাটাবেস থেকে তথ্য আনা
-    cursor.execute("SELECT referral_count FROM users WHERE user_id = ?", (user_id,))
-    res = cursor.fetchone()
-    ref_count = res[0] if res and res[0] is not None else 0
-    
-    bot_info = await bot.get_me()
-    refer_link = f"https://t.me/{bot_info.username}?start={user_id}"
-    
-    inline_kb = types.InlineKeyboardMarkup()
-    inline_kb.add(types.InlineKeyboardButton("📜 রেফারেল নিয়মাবলী", callback_data="ref_rules_view"))
-
-    text = (
-        f"🎊 **রেফারেল ড্যাশবোর্ড** 🎊\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👤 **আপনার মোট রেফার:** `{ref_count}` জন\n\n"
-        f"🔗 **আপনার রেফার লিঙ্ক:**\n`{refer_link}`\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🎁 **অফার:** প্রতি সফল রেফারে পাবেন **৫ টাকা** বোনাস!\n\n"
-        f"📢 বন্ধুদের সাথে লিঙ্ক শেয়ার করুন এবং আয় শুরু করুন। ✨"
-    )
-    await message.answer(text, reply_markup=inline_kb, parse_mode="Markdown")
 
 # --- ২. রেফারেল রুলস হ্যান্ডলার ---
 @dp.callback_query_handler(text="ref_rules_view")
@@ -1266,6 +1210,36 @@ async def show_ref_rules(call: types.CallbackQuery):
     )
     await call.answer()
     await bot.send_message(call.from_user.id, rules_text, parse_mode="Markdown")         
+        # --- শুধুমাত্র অ্যাডমিনের পেমেন্ট কন্ট্রোল ---
+@dp.callback_query_handler(lambda c: c.data.startswith('admin_payment_'), user_id=ADMIN_ID)
+async def finalize_admin_action(call: types.CallbackQuery):
+    data = call.data.split('_')
+    # data[2] = action (approve/reject), data[3] = user_id, data[4] = amount
+    action = data[2]
+    target_uid = int(data[3])
+    amount = int(data[4])
+
+    if action == "approve":
+        # ১. ইউজারকে মেসেজ পাঠানো
+        try:
+            await bot.send_message(target_uid, f"✅ **আপনার উইথড্র অ্যাপ্রুভ হয়েছে!**\n💰 পরিমাণ: {amount} ৳\nটাকা আপনার একাউন্টে পাঠিয়ে দেওয়া হয়েছে।")
+        except: pass
+            
+        # ২. অ্যাডমিন মেসেজ আপডেট (এখানে আর কোনো প্রশ্ন করবে না)
+        await call.message.edit_text(call.message.text + f"\n\n✅ **Status: Approved (সফল)**")
+        await call.answer("পেমেন্ট অ্যাপ্রুভড!", show_alert=True)
+
+    elif action == "reject":
+        # টাকা ফেরত দেওয়া
+        cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, target_uid))
+        db.commit()
+        
+        try:
+            await bot.send_message(target_uid, f"❌ **আপনার উইথড্র রিজেক্ট করা হয়েছে।**\n💰 {amount} ৳ ফেরত দেওয়া হয়েছে।")
+        except: pass
+            
+        await call.message.edit_text(call.message.text + "\n\n❌ **Status: Rejected (টাকা ফেরত)**")
+        await call.answer("রিজেক্ট করা হয়েছে!", show_alert=True)
         
 if __name__ == '__main__':
     keep_alive()
