@@ -523,62 +523,7 @@ async def send_block_reason(message: types.Message, state: FSMContext):
         await state.finish()
     except:
         await message.answer(f"⚠️ ইউজার `{uid}` কে মেসেজ পাঠানো যায়নি।")
-# ১. রেফারেল বাটনে ক্লিক করলে ডাটাবেস থেকে আসল সংখ্যা দেখাবে
-@dp.message_handler(lambda message: message.text == "👥 Referral")
-async def referral_command(message: types.Message):
-    user_id = message.from_user.id
-    # ১০৩ লাইনের নিচে এটি বসান
-    if await is_blocked(user_id):
-        return await message.answer("❌ দুঃখিত, আপনাকে ব্লক করা হয়েছে। \n\n✅আপনি 24 hrs পরে বটটি ব্যবহার করতে পারবেন না।")
-        
-    # ডাটাবেস থেকে ইউজারের রেফারেল সংখ্যা খুঁজে আনা
-    cursor.execute("SELECT referral_count FROM users WHERE user_id = ?", (user_id,))
-    res = cursor.fetchone()
-    
-    # যদি ডাটাবেসে তথ্য না থাকে তবে ০ দেখাবে
-    ref_count = res[0] if res and res[0] is not None else 0
-    
-    bot_info = await bot.get_me()
-    refer_link = f"https://t.me/{bot_info.username}?start={user_id}"
-    
-    # আপনার স্ক্রিনশটের ডিজাইন অনুযায়ী মেসেজ
-    text = (f"👥 **আপনার মোট রেফারেল:** {ref_count} জন\n"
-            f"🔗 **আপনার লিঙ্ক:** `{refer_link}`\n\n"
-            f".......📮**Attention**.......\n\n"
-            f"🔴 প্রত্যেক রেফারের জন্য ৫ টাকা পাবেন।\n"
-            f"🚨 👀 ওই টাকা তখনই পাবেন যখন ওই ইউজার ৫০ টাকার উপরে ব্যালেন্স করবে।\n"
-            f"🔥 আপনি কার মাধ্যমে এই বটে এসেছেন?\n\n\n"
-            f"💣 তার Username অথবা User ID লিখে নিচে পাঠান\n...↓↓↓↓নইতো /start দিন")
-    
-    await message.answer(text, parse_mode="Markdown")
-    # ইউজারের ইনপুট নেওয়ার জন্য স্টেট সেট করা
-    await BotState.waiting_for_referrer_info.set()
 
-# ২. ইউজার যখন রেফারারের তথ্য লিখে পাঠাবে (ইনপুট হ্যান্ডলার)
-@dp.message_handler(state=BotState.waiting_for_referrer_info)
-async def process_referral_info(message: types.Message, state: FSMContext):
-    referrer_detail = message.text # ইউজার যা লিখে পাঠাবে বট তা গ্রহণ করবে
-    sender_name = message.from_user.full_name
-    sender_id = message.from_user.id
-    
-    # অ্যাডমিনকে নোটিফিকেশন পাঠানো
-    admin_msg = (f"📢 **নতুন রেফারেল রিপোর্ট!**\n\n"
-                 f"👤 **প্রেরক:** {sender_name}\n"
-                 f"🆔 **আইডি:** `{sender_id}`\n"
-                 f"━━━━━━━━━━━━━━━\n"
-                 f"📝 **যার মাধ্যমে এসেছে:** {referrer_detail}")
-    
-    try:
-        await bot.send_message(ADMIN_ID, admin_msg, parse_mode="Markdown")
-    except:
-        pass
-        
-    success_text = ("🚨 এক আইডি দিয়ে বার বার রেফার করলে আপনাকে\n এবং ওই আইডিকে টেলিগ্রাম থেকে ব্লক করা হবে!\n\n"
-                    "🟢 আপনার রেফারেল রিসিভ করা হয়েছে।\n"
-                    "👌 ধন্যবাদ")
-    
-    await message.answer(success_text, reply_markup=main_menu())
-    await state.finish()
 @dp.message_handler(commands=['edit_ref'], user_id=ADMIN_ID)
 async def admin_edit_referral(message: types.Message):
     try:
