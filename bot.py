@@ -70,7 +70,18 @@ try:
 except Exception as e:
     # যদি কলামগুলো আগে থেকেই থাকে তবে এই এরর ইগনোর করবে
     print(f"Note: {e}")
-    
+    # ডাটাবেসে নতুন কলামগুলো যোগ করার কোড
+try:
+    # রেফারেল কমিশন জমানোর জন্য আলাদা ব্যালেন্স ঘর
+    cursor.execute("ALTER TABLE users ADD COLUMN refer_balance REAL DEFAULT 0")
+    # উইথড্র কতবার হয়েছে তা গুনার জন্য ঘর (১০ বার লিমিট চেক করার জন্য)
+    cursor.execute("ALTER TABLE users ADD COLUMN withdraw_count INTEGER DEFAULT 0")
+    db.commit()
+    print("✅ Database updated successfully!")
+except Exception as e:
+    # যদি কলামগুলো আগে থেকেই থাকে তবে কোনো এরর দিবে না
+    print(f"ℹ️ Database notice: {e}")
+
 
 class BotState(StatesGroup):
     waiting_for_file = State()
@@ -96,7 +107,7 @@ class BotState(StatesGroup):
     
     # উইথড্র করার জন্য স্টেট
     waiting_for_withdraw_type = State() # রিচার্জে নেবে নাকি সেন্ড মানিতে
-
+    waiting_for_transfer_amount = State()
 async def is_blocked(user_id):
     cursor.execute("SELECT user_id FROM blacklist WHERE user_id=?", (user_id,))
     return cursor.fetchone() is not None
@@ -254,7 +265,7 @@ async def get_2fa(message: types.Message, state: FSMContext):
     cursor.execute("UPDATE stats SET single_id_count = single_id_count + 1 WHERE user_id=? AND date=?", (message.from_user.id, today))
 
     category = data.get('category')
-    amount_to_add = 0
+    amount_to_add = 0 
 
     # পুরাতন এবং নতুন সব কাজের রেট এখানে দেওয়া হলো
     if category == "FB 00 Fnd 2fa":
@@ -1198,18 +1209,7 @@ async def list_blocked_users(message: types.Message):
 
     await message.answer(response, parse_mode="Markdown")
 
-# --- ২. রেফারেল রুলস হ্যান্ডলার ---
-@dp.callback_query_handler(text="ref_rules_view")
-async def show_ref_rules(call: types.CallbackQuery):
-    rules_text = (
-        "📜 **রেফারেল এর শর্তাবলী** 📜\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "১️⃣ নতুন ইউজার আপনার লিঙ্কে ক্লিক করে বোট 'Start' করলে কাউন্ট হবে।\n"
-        "২️⃣ প্রতি রেফারে পাবেন ৫ টাকা।\n"
-        "৩️⃣ ফেক রেফার করলে আইডি ব্লক করা হবে। ✨"
-    )
-    await call.answer()
-    await bot.send_message(call.from_user.id, rules_text, parse_mode="Markdown")         
+
         # --- শুধুমাত্র অ্যাডমিনের পেমেন্ট কন্ট্রোল ---
 @dp.callback_query_handler(lambda c: c.data.startswith('admin_payment_'), user_id=ADMIN_ID)
 async def finalize_admin_action(call: types.CallbackQuery):
@@ -1240,7 +1240,161 @@ async def finalize_admin_action(call: types.CallbackQuery):
             
         await call.message.edit_text(call.message.text + "\n\n❌ **Status: Rejected (টাকা ফেরত)**")
         await call.answer("রিজেক্ট করা হয়েছে!", show_alert=True)
-        
+        # --- ধাপ ২: রেফারেল মেনু আপডেট ---
+@dp.message_handler(lambda message: message.text == "👥 Referral")
+async def referral_menu(message: types.Message):
+    user_id = message.from_user.id
+    
+    # ডাটাবেস থেকে রেফার ব্যালেন্স এবং মেইন ব্যালেন্স আনা
+    cursor.execute("SELECT refer_balance, balance FROM users WHERE user_id=?", (user_id,))
+    res = cursor.fetchone()
+    ref_balance = res[0] if res else 0
+    main_balance = res[1] if res else 0
+
+    # ইনলাইন কিবোর্ড তৈরি (নতুন বাটনসহ)
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        types.InlineKeyboardButton("💰 Add to Main Balance", callback_data="transfer_ref_request"),
+        types.InlineKeyboardButton("📜 Rules", callback_data="ref_rules")
+    )
+    
+    ref_link = f"https://t.me/{(await bot.get_me()).username}?start={user_id}"
+    
+    text = (
+        f"👥 **রেফারেল ড্যাশবোর্ড**\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"💵 **রেফার ব্যালেন্স:** `{ref_balance:.2f} ৳`\n"
+        f"💰 **মেইন ব্যালেন্স:** `{main_balance:.2f} ৳`\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔗 **আপনার রেফার লিংক:**\n`{ref_link}`\n\n"
+        f"✨ রেফার ব্যালেন্স মেইন ব্যালেন্সে নিতে নিচের বাটনে ক্লিক করুন। 👇"
+    )
+    
+    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
+# --- ১. ইউজার যখন বাটনে ক্লিক করবে ---
+@dp.callback_query_handler(text="transfer_ref_request")
+async def ask_transfer_amount(call: types.CallbackQuery, state: FSMContext):
+    user_id = call.from_user.id
+    
+    # ডাটাবেস থেকে ইউজারের রেফার ব্যালেন্স চেক করা
+    cursor.execute("SELECT refer_balance FROM users WHERE user_id=?", (user_id,))
+    res = cursor.fetchone()
+    ref_bal = res[0] if res else 0
+    
+    # যদি ব্যালেন্স ০ বা তার কম হয়
+    if ref_bal <= 0:
+        return await call.answer("⚠️ আপনার কোনো রেফার ব্যালেন্স নেই!", show_alert=True)
+    
+    # স্টেট সেট করা (টাকার পরিমাণ নেওয়ার জন্য)
+    await BotState.waiting_for_transfer_amount.set() 
+    
+    # ইউজারকে মেসেজ দেওয়া
+    text = (
+        f"💰 আপনার বর্তমান রেফার ব্যালেন্স: `{ref_bal:.2f} ৳`\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "আপনি কত টাকা মেইন ব্যালেন্সে নিতে চান? পরিমাণটি সংখ্যায় লিখুন (যেমন: ২০):"
+    )
+    await call.message.answer(text)
+    await call.answer()
+    # --- ২. ইউজার টাকার পরিমাণ লিখে পাঠালে অ্যাডমিনকে জানানো ---
+@dp.message_handler(state=BotState.waiting_for_transfer_amount)
+async def send_transfer_request_to_admin(message: types.Message, state: FSMContext):
+    # ইনপুটটি সংখ্যা কি না চেক করা
+    if not message.text.isdigit():
+        return await message.answer("❌ অনুগ্রহ করে সঠিক সংখ্যা লিখুন (যেমন: ৫০)")
+
+    amount = float(message.text)
+    user_id = message.from_user.id
+    
+    # ডাটাবেস থেকে ইউজারের বর্তমান রেফার ব্যালেন্স চেক করা
+    cursor.execute("SELECT refer_balance FROM users WHERE user_id=?", (user_id,))
+    res = cursor.fetchone()
+    current_ref_bal = res[0] if res else 0
+
+    # ইউজারের কি যথেষ্ট ব্যালেন্স আছে?
+    if amount > current_ref_bal:
+        return await message.answer(f"❌ আপনার পর্যাপ্ত রেফার ব্যালেন্স নেই!\nবর্তমান ব্যালেন্স: `{current_ref_bal:.2f} ৳`")
+
+    # পরিমাণ যদি ০ এর কম হয়
+    if amount <= 0:
+        return await message.answer("❌ সর্বনিম্ন ১ টাকা ট্রান্সফার করা যাবে।")
+
+    # অ্যাডমিনের জন্য কিবোর্ড তৈরি (Approve/Reject বাটন)
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("✅ Add Money", callback_data=f"ref_adm_add_{user_id}_{amount}"),
+        types.InlineKeyboardButton("❌ Reject", callback_data=f"ref_adm_rej_{user_id}_{amount}")
+    )
+
+    # অ্যাডমিনকে পাঠানোর মেসেজ
+    admin_text = (
+        f"🔄 **নতুন ব্যালেন্স ট্রান্সফার রিকোয়েস্ট!**\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 নাম: {message.from_user.full_name}\n"
+        f"🆔 আইডি: `{user_id}`\n"
+        f"🔗 ইউজারনেম: @{message.from_user.username or 'No_Username'}\n"
+        f"💰 পরিমাণ: **{amount:.2f} ৳**\n"
+        f"🏠 মেথড: **Refer to Main Balance**\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"আপনি কি এই টাকা মেইন ব্যালেন্সে এড করতে চান? 👇"
+    )
+
+    # অ্যাডমিনকে মেসেজ পাঠানো
+    await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb, parse_mode="Markdown")
+    
+    # ইউজারকে জানানো
+    await message.answer(
+        f"✅ আপনার **{amount:.2f} ৳** ট্রান্সফার রিকোয়েস্ট অ্যাডমিনের কাছে পাঠানো হয়েছে।\n"
+        f"⏳ অ্যাডমিন এপ্রুভ করলে আপনার মেইন ব্যালেন্সে টাকা যোগ হয়ে যাবে।",
+        reply_markup=main_menu() # আপনার মেইন মেনু ফাংশনটি কল করুন
+    )
+    
+    # স্টেট শেষ করা
+    await state.finish()
+    # --- ৫. অ্যাডমিন যখন ব্যালেন্স ট্রান্সফার এপ্রুভ বা রিজেক্ট করবে ---
+@dp.callback_query_handler(lambda c: c.data.startswith('ref_adm_'), user_id=ADMIN_ID)
+async def handle_transfer_approval(call: types.CallbackQuery):
+    # ডাটা আলাদা করা (ref_adm_add_USERID_AMOUNT)
+    data = call.data.split('_')
+    action = data[2] # add অথবা rej
+    target_uid = int(data[3])
+    amount = float(data[4])
+
+    if action == "add":
+        # ১. ডাটাবেসে মেইন ব্যালেন্স যোগ এবং রেফার ব্যালেন্স বিয়োগ করা
+        # আমরা সরাসরি SQL দিয়ে একবারে করছি যাতে কোনো ভুল না হয়
+        cursor.execute(
+            "UPDATE users SET balance = balance + ?, refer_balance = refer_balance - ? WHERE user_id = ?", 
+            (amount, amount, target_uid)
+        )
+        db.commit()
+
+        # ২. ইউজারকে সুখবর পাঠানো
+        try:
+            success_text = (
+                f"🎉 **অভিনন্দন!**\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"আপনার **{amount:.2f} ৳** রেফার ব্যালেন্স থেকে মেইন ব্যালেন্সে সফলভাবে যুক্ত হয়েছে।\n"
+                f"এখন আপনি এই টাকা উইথড্র করতে পারবেন। ধন্যবাদ! ✨"
+            )
+            await bot.send_message(target_uid, success_text, parse_mode="Markdown")
+        except:
+            pass
+
+        # ৩. অ্যাডমিন মেসেজ আপডেট করা
+        await call.message.edit_text(call.message.text + f"\n\n✅ **Status: Money Added to Main Balance**")
+        await call.answer("টাকা সফলভাবে মেইন ব্যালেন্সে যোগ হয়েছে!", show_alert=True)
+
+    elif action == "rej":
+        # রিজেক্ট করলে শুধু স্ট্যাটাস আপডেট হবে (টাকা ইউজারের রেফার ব্যালেন্সেই থেকে যাবে)
+        try:
+            await bot.send_message(target_uid, f"❌ দুঃখিত! আপনার **{amount:.2f} ৳** ব্যালেন্স ট্রান্সফার রিকোয়েস্ট অ্যাডমিন রিজেক্ট করেছে।")
+        except:
+            pass
+
+        await call.message.edit_text(call.message.text + "\n\n❌ **Status: Request Rejected**")
+        await call.answer("রিকোয়েস্ট রিজেক্ট করা হয়েছে।", show_alert=True)
+    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
