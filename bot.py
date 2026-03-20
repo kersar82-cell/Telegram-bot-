@@ -137,11 +137,11 @@ def main_menu():
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     
     # আপনার পছন্দমতো জোড়ায় জোড়ায় সাজানো
-    keyboard.row("Work start 🔥", "🔥Work Start v2")
-    keyboard.row("🧑‍💻Support", "👥 Referral")
-    keyboard.row("🔴Rules & Price", "💴Withdraw")
+    keyboard.row("💻INSTAGRAM WORK", "💻FACEBOOK WORK")
+    keyboard.row("☎️SUPPORT", "🎁INVITE BONUS")
+    keyboard.row("🔊RULES & PRICE", "💳WITHDRAW")
     
-    keyboard.row("🏆 Leaderboard", "📊 My Status")
+    keyboard.row("🏆LEADERBOARD", "📊MY STATUS")
     
     return keyboard
     
@@ -215,7 +215,7 @@ async def ask_work_type(message: types.Message, state: FSMContext):
     inline_kb.add(types.InlineKeyboardButton("🗃️ File", callback_data="type_file"))
     inline_kb.add(types.InlineKeyboardButton("👤 Single ID", callback_data="type_single"))
     await message.answer("✅ আপনার কাজের ধরণ বেছে নিন:", reply_markup=inline_kb)
-@dp.message_handler(lambda message: message.text == "Work start 🔥")
+@dp.message_handler(lambda message: message.text == "💻INSTAGRAM WORK")
 async def work_start(message: types.Message):
     if await is_blocked(message.from_user.id):
         return await message.answer("❌ দুঃখিত, আপনি ব্লকড! আপনি আর কাজ জমা দিতে পারবেন না। /nএডমিনের সাথে কথা বলুন 👍")
@@ -345,7 +345,7 @@ async def handle_file(message: types.Message, state: FSMContext):
     await message.answer("✅ আপনার ফাইলটি জমা হয়েছে। \n🔥এডমিন চেক করে ব্যালেন্স এড করে দিবে।")
     await state.finish()
 # --- ধাপ ২ এর উইথড্র মেইন মেনু ---
-@dp.message_handler(lambda message: message.text == "💴Withdraw")
+@dp.message_handler(lambda message: message.text == "💳WITHDRAW")
 async def withdraw_main_menu(message: types.Message):
     user_id = message.from_user.id
     
@@ -840,7 +840,7 @@ async def admin_edit_referral(message: types.Message):
     except:
         await message.answer("❌ ভুল আইডি বা সংখ্যা।")
     # 'Support' বাটনে ক্লিক করলে যা শো করবে (হাইপারলিঙ্ক সহ)
-@dp.message_handler(lambda message: message.text == "🧑‍💻Support")
+@dp.message_handler(lambda message: message.text == "☎️SUPPORT")
 async def support_message(message: types.Message):
     # এখানে [শব্দ](লিঙ্ক) এই ফরম্যাটে হাইপারলিঙ্ক সেট করা হয়েছে
     text = (
@@ -863,7 +863,7 @@ def work_v2_menu():
     return keyboard
 
 # ২. মেইন বাটন হ্যান্ডলার (v2 ওপেন করার জন্য)
-@dp.message_handler(lambda message: "Work Start v2" in message.text or message.text == "🔥Work Start v2")
+@dp.message_handler(lambda message: "Work Start v2" in message.text or message.text == "💻FACEBOOK WORK")
 async def work_v2_handler(message: types.Message):
     user_id = message.from_user.id 
     if await is_blocked(user_id):
@@ -933,7 +933,7 @@ def rules_price_menu():
     return keyboard
 
 # --- ২. মেইন বাটন হ্যান্ডলার ---
-@dp.message_handler(lambda message: message.text == "🔴Rules & Price")
+@dp.message_handler(lambda message: message.text == "🔊RULES & PRICE")
 async def rules_price_handler(message: types.Message):
     await message.answer(
         "👉 যে ক্যাটাগরির নিয়ম এবং রেট জানতে চান,\n\n👇 নিচের বাটন থেকে সেটি সিলেক্ট করুন:",
@@ -985,7 +985,7 @@ async def show_only_rules(message: types.Message):
     
     if msg:
         await message.answer(msg, parse_mode="Markdown")
-@dp.message_handler(lambda message: message.text == "📊 My Status")
+@dp.message_handler(lambda message: message.text == "📊MY STATUS")
 async def show_user_status(message: types.Message):
     user_id = message.from_user.id
     
@@ -1203,7 +1203,7 @@ async def add_fake_leaderboard(message: types.Message):
 
     await message.answer(f"✅ ফেক ইউজার যুক্ত হয়েছে!\n🆔 UID: `{fake_uid}`\n💰 ব্যালেন্স: {balance} ৳")
 
-@dp.message_handler(lambda message: message.text == "🏆 Leaderboard")
+@dp.message_handler(lambda message: message.text == "🏆LEADERBOARD")
 async def show_leaderboard(message: types.Message):
     user_id = message.from_user.id
     # ১০৩ লাইনের নিচে এটি বসান
@@ -1333,7 +1333,7 @@ async def finalize_admin_action(call: types.CallbackQuery):
         await call.message.edit_text(call.message.text + "\n\n❌ **Status: Rejected (টাকা ফেরত)**")
         await call.answer("রিজেক্ট করা হয়েছে!", show_alert=True)
         # --- ধাপ ২: রেফারেল মেনু আপডেট ---
-@dp.message_handler(lambda message: message.text == "👥 Referral")
+@dp.message_handler(lambda message: message.text == "🎁INVITE BONUS")
 async def referral_menu(message: types.Message):
     user_id = message.from_user.id
     
