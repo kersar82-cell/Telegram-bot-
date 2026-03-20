@@ -161,6 +161,7 @@ async def start(message: types.Message, state: FSMContext):
 
     # ২. যদি ইউজার একদম নতুন হয় (ডাটাবেসে নেই)
     if not existing_user:
+        referrer_id = 0
         # যদি সে কারো রেফারেল লিংকে ক্লিক করে আসে
         if args and args.isdigit():
             referrer_id = int(args)
@@ -177,7 +178,7 @@ async def start(message: types.Message, state: FSMContext):
         
         # নতুন ইউজারকে ডাটাবেসে সেভ করা
         # নতুন সংশোধিত লাইন:
-        cursor.execute("INSERT INTO users (user_id, username, referred_by) VALUES (?, ?, ?)", (user_id, username, referrer_id if args and args.isdigit() else 0))
+        cursor.execute("INSERT INTO users (user_id, username, referred_by) VALUES (?, ?, ?)", (user_id, username, referrer_id))
         db.commit()
     else:
         # যদি ইউজার আগে থেকেই থাকে, শুধু ইউজারনেম আপডেট করা (ঐচ্ছিক)
@@ -1466,7 +1467,17 @@ async def show_referral_rules(call: types.CallbackQuery):
     kb.add(types.InlineKeyboardButton("⬅️ Back to Dashboard", callback_data="back_to_ref"))
     
     await call.message.edit_text(rules_text, reply_markup=kb, parse_mode="Markdown")
-        
+@dp.callback_query_handler(lambda c: c.data == 'back_to_ref')
+async def back_to_main_menu(call: types.CallbackQuery):
+    # রুলস মেসেজটি ডিলিট করে দিবে
+    await call.message.delete()
+    
+    # ইউজারকে মেইন মেনু মেসেজ এবং বাটনগুলো পাঠিয়ে দিবে
+    await call.message.answer("🏠 আপনি মেইন মেনুতে ফিরে এসেছেন। একটি অপশন বেছে নিন:", reply_markup=main_menu())
+    
+    # কলব্যাক অ্যানসার (যাতে লোডিং চিহ্ন চলে যায়)
+    await call.answer()
+    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
