@@ -81,7 +81,28 @@ try:
 except Exception as e:
     # যদি কলামগুলো আগে থেকেই থাকে তবে কোনো এরর দিবে না
     print(f"ℹ️ Database notice: {e}")
+# --- ডাটাবেজ আপডেট করার কোড (এটি নিশ্চিত করবে সব কলাম আছে) ---
+try:
+    # রেফার ব্যালেন্স জমানোর জন্য কলাম
+    cursor.execute("ALTER TABLE users ADD COLUMN refer_balance REAL DEFAULT 0.0")
+except:
+    pass
 
+try:
+    # উইথড্র সংখ্যা ১০ বার লিমিট চেক করার জন্য কলাম
+    cursor.execute("ALTER TABLE users ADD COLUMN withdraw_count INTEGER DEFAULT 0")
+except:
+    pass
+
+try:
+    # কে কাকে রেফার করেছে তা সেভ করার জন্য কলাম
+    cursor.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER DEFAULT 0")
+except:
+    pass
+
+db.commit()
+print("✅ ডাটাবেজ সফলভাবে আপডেট হয়েছে!")
+    
 
 class BotState(StatesGroup):
     waiting_for_file = State()
@@ -581,6 +602,9 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
 
         # --- এই লাইনের নিচ থেকে আগের admin_text এবং kb সরিয়ে ফেলুন ---
     
+        # ... আগের ব্যালেন্স আপডেট এবং কমিশনের হিসাবের নিচে ...
+    
+    # ২. এইখানে আপনার আগের admin_text সরিয়ে এটি বসান
     admin_text = (
         f"{withdraw_title}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -596,23 +620,21 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
         f"পেমেন্ট করে নিচের বাটনে ক্লিক করুন 👇"
     )
 
+    # ৩. এইখানে আগের kb সরিয়ে এটি বসান
     kb = types.InlineKeyboardMarkup()
     kb.add(
-        # এখানে callback_data তে commission যোগ করা হয়েছে যাতে এপ্রুভ করলে বট টাকা পাঠাতে পারে
+        # এখানে callback_data এর ভেতর commission পাঠানো হয়েছে
         types.InlineKeyboardButton("✅ Approve", callback_data=f"admin_payment_approve_{user_id}_{amount}_{commission}"),
         types.InlineKeyboardButton("❌ Reject", callback_data=f"admin_payment_reject_{user_id}_{amount}")
     )
 
+    # ৪. এরপর অ্যাডমিনকে মেসেজ পাঠানো
     await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb, parse_mode="Markdown")
     
-    # --- এরপর আগের মতোই থাকবে ---
-    await message.answer(
-        f"✅ **আপনার উইথড্র রিকোয়েস্ট জমা হয়েছে!**\n...",
-        reply_markup=main_menu()
-    )
-    
+    # ইউজারকে কনফার্মেশন পাঠানো
+    await message.answer("✅ আপনার উইথড্র রিকোয়েস্ট জমা হয়েছে!", reply_markup=main_menu())
     await state.finish()
-    
+
 # ৪. এডমিন প্যানেল
 # ==========================================
 @dp.message_handler(commands=['check'])
@@ -1059,42 +1081,63 @@ async def get_today_stats(message: types.Message):
             await message.answer(response_text[i:i+4000], parse_mode="Markdown")
     else:
         await message.answer(response_text, parse_mode="Markdown")
-# --- এটি ফাইলের একদম শেষে বসান ---
-  # ==========================================
+#==============
 # ৪. উইথড্র এপ্রুভ/রিজেক্ট বাটন প্রসেস
 # ==========================================
-@dp.callback_query_handler(lambda c: c.data.startswith('wd_'), user_id=ADMIN_ID)
-async def process_withdraw_callback(call: types.CallbackQuery):
-    action = call.data.split('_')[1] # approve/reject
-    req_id = call.data.split('_')[2]
-
-    cursor.execute("SELECT user_id, amount, status FROM withdraw_requests WHERE req_id=?", (req_id,))
-    request = cursor.fetchone()
-
-    if not request or request[2] != 'pending':
-        return await call.answer("⚠️ এই রিকোয়েস্টটি আগেই প্রসেস করা হয়েছে।", show_alert=True)
-
-    uid, amount, _ = request
-
+@dp.callback_query_handler(lambda c: c.data.startswith('admin_payment_'), user_id=ADMIN_ID)
+async def finalize_admin_action(call: types.CallbackQuery):
+    data = call.data.split('_')
+    # data[2]=approve/reject, data[3]=user_id, data[4]=amount, data[5]=commission
+    action = data[2]
+    target_uid = int(data[3])
+    amount = float(data[4])
+    
     if action == "approve":
-        cursor.execute("UPDATE withdraw_requests SET status='approved' WHERE req_id=?", (req_id,))
+        commission = float(data[5]) # বাটন থেকে আসা কমিশন
+
+        # ১. ডাটাবেস থেকে রেফারার এবং ইউজারের বর্তমান উইথড্র সংখ্যা আনা
+        cursor.execute("SELECT referred_by, withdraw_count FROM users WHERE user_id=?", (target_uid,))
+        res = cursor.fetchone()
+        referrer_id = res[0] if res else 0
+        wd_count = (res[1] or 0) + 1 # এই উইথড্রটি নিয়ে মোট সংখ্যা
+
+        # ২. উইথড্র সংখ্যা ১ বাড়িয়ে দেওয়া
+        cursor.execute("UPDATE users SET withdraw_count = ? WHERE user_id = ?", (wd_count, target_uid))
         db.commit()
+
+        commission_msg = ""
+        # ৩. যদি ১০ বারের নিচে থাকে এবং রেফারার থাকে, তবে কমিশন দেওয়া
+        if referrer_id != 0 and wd_count <= 10:
+            cursor.execute("UPDATE users SET refer_balance = refer_balance + ? WHERE user_id = ?", (commission, referrer_id))
+            db.commit()
+            commission_msg = f"\n🎁 রেফারার ({referrer_id}) কে {commission:.2f} ৳ কমিশন দেওয়া হয়েছে।"
+            
+            # রেফারারকে নোটিফিকেশন পাঠানো
+            try:
+                await bot.send_message(referrer_id, f"🎊 আপনার রেফারে জয়েন করা ইউজার উইথড্র করায় আপনি **{commission:.2f} ৳** রেফার কমিশন পেয়েছেন!")
+            except: pass
+
+        # ৪. উইথড্র করা ইউজারকে জানানো
         try:
-            await bot.send_message(uid, f"✅ **আপনার উইথড্র এপ্রুভ হয়েছে!**\n💰 পরিমাণ: {amount} ৳\nঅল্প সময়ের মধ্যে পেমেন্ট পেয়ে যাবেন।")
+            await bot.send_message(target_uid, f"✅ **আপনার উইথড্র অ্যাপ্রুভ হয়েছে!**\n💰 পরিমাণ: {amount} ৳\nপেমেন্ট আপনার একাউন্টে পাঠিয়ে দেওয়া হয়েছে।")
         except: pass
-        await call.message.edit_text(call.message.text + "\n\n✅ **Status: Approved**")
-        await call.answer("সফলভাবে এপ্রুভ করা হয়েছে।")
+            
+        # ৫. অ্যাডমিন মেসেজ আপডেট
+        await call.message.edit_text(call.message.text + f"\n\n✅ **Status: Approved**{commission_msg}")
+        await call.answer("সফলভাবে অ্যাপ্রুভ ও কমিশন দেওয়া হয়েছে।", show_alert=True)
 
     elif action == "reject":
-        # রিজেক্ট করলে টাকা ইউজারের একাউন্টে ফেরত দেওয়া
-        cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, uid))
-        cursor.execute("UPDATE withdraw_requests SET status='rejected' WHERE req_id=?", (req_id,))
+        # টাকা ফেরত দেওয়া (মেইন ব্যালেন্সে)
+        cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, target_uid))
         db.commit()
+        
         try:
-            await bot.send_message(uid, f"❌ **আপনার উইথড্র রিকোয়েস্ট রিজেক্ট করা হয়েছে।**\n💰 {amount} ৳ আপনার ব্যালেন্সে ফেরত দেওয়া হয়েছে।")
+            await bot.send_message(target_uid, f"❌ **আপনার উইথড্র রিজেক্ট করা হয়েছে।**\n💰 {amount} ৳ আপনার মেইন ব্যালেন্সে ফেরত দেওয়া হয়েছে।")
         except: pass
-        await call.message.edit_text(call.message.text + "\n\n❌ **Status: Rejected**")
-        await call.answer("রিকোয়েস্ট রিজেক্ট করা হয়েছে।")
+            
+        await call.message.edit_text(call.message.text + "\n\n❌ **Status: Rejected (টাকা ফেরত)**")
+        await call.answer("রিজেক্ট করা হয়েছে!", show_alert=True)
+        
 import random
 
 # ১. ফেক মেম্বার অ্যাড করার কমান্ড (অ্যাডমিনের জন্য)
