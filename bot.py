@@ -1347,7 +1347,8 @@ async def referral_menu(message: types.Message):
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton("💰 Add to Main Balance", callback_data="transfer_ref_request"),
-        types.InlineKeyboardButton("📜 Rules", callback_data="ref_rules")
+        types.InlineKeyboardButton("📜 Rules", callback_data="ref_rules"),
+        types.InlineKeyboardButton("📋 Refer List", callback_data="view_ref_list")
     )
     
     ref_link = f"https://t.me/{(await bot.get_me()).username}?start={user_id}"
@@ -1515,7 +1516,49 @@ async def back_to_main_menu(call: types.CallbackQuery):
     
     # কলব্যাক অ্যানসার (যাতে লোডিং চিহ্ন চলে যায়)
     await call.answer()
+@dp.callback_query_handler(lambda c: c.data == 'view_ref_list')
+async def show_simple_ref_list(call: types.CallbackQuery):
+    user_id = call.from_user.id
     
+    # আপনার ডাটাবেস থেকে এই ইউজারের রেফারেলদের (ID এবং Username) খুঁজে বের করা
+    cursor.execute("SELECT user_id, username FROM users WHERE referred_by = ?", (user_id,))
+    ref_users = cursor.fetchall()
+    
+    # যদি কেউ এখনো কাউকে রেফার না করে থাকে
+    if not ref_users:
+        return await call.answer("❌ আপনার এখনো কোনো সফল রেফারেল নেই।", show_alert=True)
+
+    text = "📋 **আপনার রেফারেল মেম্বার লিস্ট:**\n"
+    text += "━━━━━━━━━━━━━━━━━━━━\n"
+    
+    count = 1
+    for ref in ref_users:
+        r_id = ref[0]
+        # ইউজারনেম থাকলে @ সহ দেখাবে, না থাকলে 'নাম নেই' দেখাবে
+        r_username = f"@{ref[1]}" if ref[1] and ref[1] != "None" else "নাম নেই"
+        
+        # লিস্টে সিরিয়াল নম্বর, ইউজারনেম এবং আইডি সাজানো
+        text += f"{count}. 👤 {r_username}\n   🆔 `{r_id}`\n\n"
+        count += 1
+        
+        # লিস্ট খুব বড় হয়ে গেলে টেলিগ্রাম মেসেজ সাপোর্ট করে না, তাই ৩০ জন পর্যন্ত লিমিট
+        if count > 30:
+            text += "⚠️ *আরো অনেক মেম্বার আছে...*\n"
+            break
+
+    text += "━━━━━━━━━━━━━━━━━━━━\n"
+    text += f"👥 **মোট রেফারেল:** `{len(ref_users)}` জন"
+
+    # রেফারেল মেনুতে ফিরে যাওয়ার জন্য একটি ব্যাক বাটন
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("⬅️ Back", callback_data="back_to_ref")) # নিশ্চিত করুন callback_data আপনার কোডের সাথে মিলেছে
+    
+    try:
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    except:
+        # যদি কোনো কারণে এডিট না হয়, তবে নতুন মেসেজ হিসেবে পাঠাবে
+        await call.message.answer(text, reply_markup=kb, parse_mode="Markdown")
+        
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
