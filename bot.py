@@ -1298,11 +1298,12 @@ async def referral_menu(message: types.Message):
     user_id = message.from_user.id
     
     # ডাটাবেস থেকে রেফার ব্যালেন্স এবং মেইন ব্যালেন্স আনা
-    cursor.execute("SELECT refer_balance, balance FROM users WHERE user_id=?", (user_id,))
+    cursor.execute("SELECT refer_balance, balance, referral_count FROM users WHERE user_id=?", (user_id,))
     res = cursor.fetchone()
     ref_balance = res[0] if res else 0
     main_balance = res[1] if res else 0
-
+    total_ref = res[2] if res else 0
+    
     # ইনলাইন কিবোর্ড তৈরি (নতুন বাটনসহ)
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
@@ -1315,6 +1316,7 @@ async def referral_menu(message: types.Message):
     text = (
         f"👥 **রেফারেল ড্যাশবোর্ড**\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📊 **মোট রেফারেল:** `{total_ref} জন`\n"  # <--- এখানে নতুন লাইন
         f"💵 **রেফার ব্যালেন্স:** `{ref_balance:.2f} ৳`\n"
         f"💰 **মেইন ব্যালেন্স:** `{main_balance:.2f} ৳`\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -1446,7 +1448,25 @@ async def handle_transfer_approval(call: types.CallbackQuery):
 
         await call.message.edit_text(call.message.text + "\n\n❌ **Status: Request Rejected**")
         await call.answer("রিকোয়েস্ট রিজেক্ট করা হয়েছে।", show_alert=True)
+@dp.callback_query_handler(lambda c: c.data == 'ref_rules')
+async def show_referral_rules(call: types.CallbackQuery):
+    rules_text = (
+        "📜 **রেফারেল সিস্টেমের নিয়মাবলী:**\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "১. আপনার রেফার লিংকের মাধ্যমে নতুন কেউ জয়েন করলে সে আপনার সফল রেফার হিসেবে গণ্য হবে।\n\n"
+        "২. আপনার রেফার করা মেম্বার যখন **প্রথম ১০ বার** উইথড্র করবে, প্রতিবার আপনি পেমেন্টের **৫% কমিশন** পাবেন।\n\n"
+        "৩. রেফার কমিশন সরাসরি আপনার 'রেফার ব্যালেন্স'-এ জমা হবে।\n\n"
+        "৪. রেফার ব্যালেন্স থেকে যেকোনো সময় টাকা 'Main Balance'-এ ট্রান্সফার করে নিতে পারবেন।\n\n"
+        "৫. কোনো প্রকার ফেক রেফার বা স্প্যামিং করলে আপনার একাউন্ট পার্মানেন্টলি ব্লক করা হতে পারে।"
+    )
     
+    # এটি ইউজারের বর্তমান মেসেজটি পরিবর্তন করে রুলস দেখাবে
+    # সাথে একটি 'Back' বাটন দিলে ইউজার আবার ড্যাশবোর্ডে ফিরতে পারবে
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("⬅️ Back to Dashboard", callback_data="back_to_ref"))
+    
+    await call.message.edit_text(rules_text, reply_markup=kb, parse_mode="Markdown")
+        
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
