@@ -642,15 +642,50 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
 
 # ৪. এডমিন প্যানেল
 # ==========================================
-@dp.message_handler(commands=['check'])
-async def admin_check(message: types.Message):
-    if message.from_user.id == ADMIN_ID:
-        uid = message.get_args()
-        cursor.execute("SELECT balance, address FROM users WHERE user_id=?", (uid,))
-        res = cursor.fetchone()
-        if res: await message.answer(f"👤 ইউজার: `{uid}`\n💰 ব্যালেন্স: {res[0]} ৳\n📍 এড্রেস: {res[1]}")
-        else: await message.answer("❌ ইউজার পাওয়া যায়নি।")
+@dp.message_handler(commands=['check_user'])
+async def check_user_details(message: types.Message):
+    # আপনার অ্যাডমিন চেক করার কন্ডিশন (যেমন: if message.from_user.id != ADMIN_ID: return)
+    if message.from_user.id != ADMIN_ID:
+        return
 
+    args = message.get_args()
+    if not args or not args.isdigit():
+        return await message.answer("⚠️ আইডি দিন। উদাহরণ: `/check_user 12345678`", parse_mode="Markdown")
+
+    target_id = int(args)
+
+    # ডাটাবেস থেকে সব তথ্য একসাথে আনা
+    cursor.execute("""SELECT username, balance, refer_balance, bkash_num, nagad_num, 
+                      rocket_num, recharge_num, binance_id FROM users WHERE user_id=?""", (target_id,))
+    res = cursor.fetchone()
+
+    if res:
+        username, balance, ref_balance, bkash, nagad, rocket, recharge, binance = res
+        
+        info_text = (
+            f"👤 **ইউজার ডিটেইলস**\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🆔 **ইউজার আইডি:** `{target_id}`\n"
+            f"📛 **ইউজার নেম:** {username if username else 'নেই'}\n\n"
+            
+            f"💰 **ব্যালেন্স ডিটেইলস:**\n"
+            f"💵 মেইন ব্যালেন্স: `{balance:.2f} ৳`\n"
+            f"👥 রেফার ব্যালেন্স: `{ref_balance:.2f} ৳`\n\n"
+            
+            f"📱 **মোবাইল রিচার্জ মেথড:**\n"
+            f"📞 নম্বর: `{recharge if recharge else 'সেট নেই'}`\n\n"
+            
+            f"💸 **সেন্ড মানি মেথডসমূহ:**\n"
+            f"🔸 বিকাশ: `{bkash if bkash else 'সেট নেই'}`\n"
+            f"🔸 নগদ: `{nagad if nagad else 'সেট নেই'}`\n"
+            f"🔸 রকেট: `{rocket if rocket else 'সেট নেই'}`\n"
+            f"🔸 বিন্যান্স: `{binance if binance else 'সেট নেই'}`\n"
+            f"━━━━━━━━━━━━━━━━━━━━"
+        )
+        await message.answer(info_text, parse_mode="Markdown")
+    else:
+        await message.answer("❌ দুঃখিত, এই আইডি দিয়ে কোনো ইউজার পাওয়া যায়নি।")
+        
 @dp.message_handler(commands=['edit'])
 async def admin_edit(message: types.Message):
     if message.from_user.id == ADMIN_ID:
@@ -854,7 +889,7 @@ async def work_v2_options(message: types.Message, state: FSMContext):
     # শর্ত: শুধুমাত্র IG Cookies হলে নতুন বাটনটি যোগ হবে
     if message.text == "IG Cookies":
         # এখানে 'your_link' এর জায়গায় আপনার আসল টেলিগ্রাম লিংক দিন
-        btn_submit_link = types.InlineKeyboardButton("🔗 Submit Link", url="https://t.me/instafbhub/80")
+        btn_submit_link = types.InlineKeyboardButton("🔗 Submit Link", url="https://t.me/instafb_hub/108")
         inline_kb.add(btn_file, btn_single) # প্রথম সারিতে দুই বাটন
         inline_kb.add(btn_submit_link)      # তার নিচে বড় সাবমিট বাটন
     else:
