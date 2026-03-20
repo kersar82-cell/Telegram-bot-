@@ -608,12 +608,13 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
         # --- এই লাইনের নিচ থেকে আগের admin_text এবং kb সরিয়ে ফেলুন ---
     
         # ... আগের ব্যালেন্স আপডেট এবং কমিশনের হিসাবের নিচে ...
+    user_name = f"@{message.from_user.username}" if message.from_user.username else "নেই"
     
     # ২. এইখানে আপনার আগের admin_text সরিয়ে এটি বসান
     admin_text = (
         f"{withdraw_title}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 ইউজার: {message.from_user.full_name}\n"
+        f"👤 ইউজার: {user_name}\n"
         f"🆔 আইডি: `{user_id}`\n\n"
         f"💵 উইথড্র পরিমাণ: **{amount} ৳**\n"
         f"🎁 **রেফার কমিশন (৫%):** `{commission:.2f} ৳`\n"
@@ -1517,47 +1518,116 @@ async def back_to_main_menu(call: types.CallbackQuery):
     # কলব্যাক অ্যানসার (যাতে লোডিং চিহ্ন চলে যায়)
     await call.answer()
 @dp.callback_query_handler(lambda c: c.data == 'view_ref_list')
-async def show_simple_ref_list(call: types.CallbackQuery):
+async def show_id_only_ref_list(call: types.CallbackQuery):
     user_id = call.from_user.id
     
-    # আপনার ডাটাবেস থেকে এই ইউজারের রেফারেলদের (ID এবং Username) খুঁজে বের করা
-    cursor.execute("SELECT user_id, username FROM users WHERE referred_by = ?", (user_id,))
+    # ডাটাবেস থেকে শুধু রেফারেলদের আইডি (user_id) খুঁজে বের করা
+    cursor.execute("SELECT user_id FROM users WHERE referred_by = ?", (user_id,))
     ref_users = cursor.fetchall()
     
     # যদি কেউ এখনো কাউকে রেফার না করে থাকে
     if not ref_users:
         return await call.answer("❌ আপনার এখনো কোনো সফল রেফারেল নেই।", show_alert=True)
 
-    text = "📋 **আপনার রেফারেল মেম্বার লিস্ট:**\n"
+    text = "📋 **আপনার রেফারেল আইডি লিস্ট:**\n"
     text += "━━━━━━━━━━━━━━━━━━━━\n"
     
     count = 1
     for ref in ref_users:
         r_id = ref[0]
-        # ইউজারনেম থাকলে @ সহ দেখাবে, না থাকলে 'নাম নেই' দেখাবে
-        r_username = f"@{ref[1]}" if ref[1] and ref[1] != "None" else "নাম নেই"
         
-        # লিস্টে সিরিয়াল নম্বর, ইউজারনেম এবং আইডি সাজানো
-        text += f"{count}. 👤 {r_username}\n   🆔 `{r_id}`\n\n"
+        # প্রতিটি মেম্বারের শুধু আইডি নম্বরটি দেখাবে
+        text += f"{count}. 🆔 `{r_id}`\n"
         count += 1
         
-        # লিস্ট খুব বড় হয়ে গেলে টেলিগ্রাম মেসেজ সাপোর্ট করে না, তাই ৩০ জন পর্যন্ত লিমিট
-        if count > 30:
-            text += "⚠️ *আরো অনেক মেম্বার আছে...*\n"
+        # লিস্ট খুব বড় হয়ে গেলে ৫০ জন পর্যন্ত লিমিট রাখা ভালো
+        if count > 50:
+            text += "\n⚠️ *আরো অনেক মেম্বার আছে...*"
             break
 
     text += "━━━━━━━━━━━━━━━━━━━━\n"
     text += f"👥 **মোট রেফারেল:** `{len(ref_users)}` জন"
 
-    # রেফারেল মেনুতে ফিরে যাওয়ার জন্য একটি ব্যাক বাটন
+    # রেফারেল মেনুতে ফিরে যাওয়ার জন্য ব্যাক বাটন
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("⬅️ Back", callback_data="back_to_ref")) # নিশ্চিত করুন callback_data আপনার কোডের সাথে মিলেছে
+    kb.add(types.InlineKeyboardButton("⬅️ Back", callback_data="back_to_ref"))
     
     try:
         await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
     except:
-        # যদি কোনো কারণে এডিট না হয়, তবে নতুন মেসেজ হিসেবে পাঠাবে
         await call.message.answer(text, reply_markup=kb, parse_mode="Markdown")
+@dp.message_handler(commands=['add_user'])
+async def admin_add_manual_user(message: types.Message):
+    if message.from_user.id != ADMIN_ID: return # আপনার অ্যাডমিন চেক
+
+    args = message.get_args().split()
+    if len(args) < 2:
+        return await message.answer("⚠️ নিয়ম: `/add_user আইডি নাম`", parse_mode="Markdown")
+
+    new_id, name = int(args[0]), args[1]
+
+    try:
+        # নতুন ইউজারকে ডাটাবেসে ইনসার্ট করা (বাকি সব ডিফল্ট ০ থাকবে)
+        sql = "INSERT INTO users (user_id, username, balance, referral_count, referred_by, refer_balance, withdraw_count) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        cursor.execute(sql, (new_id, name, 0.0, 0, 0, 0.0, 0))
+        db.commit()
+        await message.answer(f"✅ সফলভাবে নতুন ইউজার অ্যাড হয়েছে!\n🆔 আইডি: `{new_id}`\n📛 নাম: `{name}`")
+    except Exception as e:
+        await message.answer(f"❌ এরর: এই আইডিটি অলরেডি ডাটাবেসে থাকতে পারে।")
+@dp.message_handler(commands=['set_referrer'])
+async def admin_edit_referrer(message: types.Message):
+    if message.from_user.id != ADMIN_ID: return
+
+    args = message.get_args().split()
+    if len(args) < 2:
+        return await message.answer("⚠️ নিয়ম: `/set_referrer ইউজারের_আইডি রেফারারের_আইডি`", parse_mode="Markdown")
+
+    target_id, new_ref_id = int(args[0]), int(args[1])
+
+    # ইউজারের রেফারার আপডেট করা
+    cursor.execute("UPDATE users SET referred_by = ? WHERE user_id = ?", (new_ref_id, target_id))
+    db.commit()
+    
+    await message.answer(f"✅ আপডেট সফল!\n👤 ইউজার `{target_id}` এখন থেকে 🤝 `{new_ref_id}` এর রেফারেল হিসেবে গণ্য হবে।")
+@dp.message_handler(commands=['set_ref_bal'])
+async def set_user_refer_balance_with_notify(message: types.Message):
+    # আপনার অ্যাডমিন চেক (নিশ্চিত করুন ADMIN_ID আপনার কোডে ডিফাইন করা আছে)
+    if message.from_user.id != ADMIN_ID: 
+        return
+
+    # কমান্ড থেকে আইডি এবং নতুন ব্যালেন্স নেওয়া (উদাহরণ: /set_ref_bal 12345 500)
+    args = message.get_args().split()
+    if len(args) < 2:
+        return await message.answer("⚠️ সঠিক নিয়ম: `/set_ref_bal ইউজার_আইডি নতুন_টাকা`", parse_mode="Markdown")
+
+    try:
+        target_id = int(args[0])
+        new_bal = float(args[1])
+        
+        # ১. ডাটাবেসে রেফারেল ব্যালেন্স আপডেট করা
+        cursor.execute("UPDATE users SET refer_balance = ? WHERE user_id = ?", (new_bal, target_id))
+        db.commit()
+        
+        # ২. অ্যাডমিনকে কনফার্মেশন মেসেজ দেওয়া
+        await message.answer(f"✅ ইউজার `{target_id}` এর রেফার ব্যালেন্স আপডেট করে `{new_bal:.2f} ৳` করা হয়েছে।")
+
+        # ৩. ইউজারের কাছে অটোমেটিক মেসেজ পাঠানো
+        notification_text = (
+            f"🔔 **ব্যালেন্স আপডেট নোটিশ!**\n\n"
+            f"অ্যাডমিন আপনার রেফারেল ব্যালেন্স আপডেট করেছেন।\n"
+            f"💰 **আপনার বর্তমান রেফার ব্যালেন্স:** `{new_bal:.2f} ৳`"
+        )
+        
+        try:
+            await bot.send_message(target_id, notification_text, parse_mode="Markdown")
+        except Exception as e:
+            # যদি ইউজার বট ব্লক করে রাখে বা আইডি ভুল হয়
+            await message.answer(f"⚠️ ব্যালেন্স আপডেট হয়েছে, কিন্তু ইউজারকে মেসেজ পাঠানো যায়নি (বট ব্লক থাকতে পারে)।")
+
+    except ValueError:
+        await message.answer("❌ ভুল ফরম্যাট! আইডি এবং টাকা সঠিকভাবে দিন।")
+    except Exception as e:
+        await message.answer(f"❌ একটি এরর হয়েছে: {str(e)}")
         
 if __name__ == '__main__':
     keep_alive()
