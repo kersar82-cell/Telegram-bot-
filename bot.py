@@ -543,11 +543,13 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
     amount = int(message.text)
     user_id = message.from_user.id
     
-    # ডাটাবেস থেকে তথ্য আনা
-    cursor.execute("SELECT balance, bkash_num, nagad_num, rocket_num, binance_id, recharge_num FROM users WHERE user_id=?", (user_id,))
+        
+    # ডাটাবেস থেকে তথ্য আনা (নতুনভাবে withdraw_count এবং referred_by সহ)
+    cursor.execute("SELECT balance, bkash_num, nagad_num, rocket_num, binance_id, recharge_num, withdraw_count, referred_by FROM users WHERE user_id=?", (user_id,))
     res = cursor.fetchone()
-    balance, bkash, nagad, rocket, binance, recharge = res
-
+    
+    # ডাটাগুলো আলাদা করা
+    balance, bkash, nagad, rocket, binance, recharge, wd_count, ref_by = res
     if amount > balance:
         return await message.answer(f"❌ আপনার ব্যালেন্স পর্যাপ্ত নয়! বর্তমান: {balance} ৳")
     
@@ -559,7 +561,9 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
     new_balance = balance - amount
     cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (new_balance, user_id))
     db.commit()
-
+   # --- এখানে বসান (ধাপ ২) ---
+    commission = amount * 0.05
+    next_wd_number = (wd_count or 0) + 1
     # --- অ্যাডমিন মেসেজ তৈরির লজিক ---
     if w_type == "recharge":
         # শুধু রিচার্জের তথ্য
@@ -575,12 +579,16 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
         )
         withdraw_title = "💸 নতুন সেন্ড মানি রিকোয়েস্ট!"
 
+        # --- এই লাইনের নিচ থেকে আগের admin_text এবং kb সরিয়ে ফেলুন ---
+    
     admin_text = (
         f"{withdraw_title}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"👤 ইউজার: {message.from_user.full_name}\n"
-        f"🆔 আইডি: `{user_id}`\n"
-        f"💵 পরিমাণ: **{amount} ৳**\n"
+        f"🆔 আইডি: `{user_id}`\n\n"
+        f"💵 উইথড্র পরিমাণ: **{amount} ৳**\n"
+        f"🎁 **রেফার কমিশন (৫%):** `{commission:.2f} ৳`\n"
+        f"📊 উইথড্র সংখ্যা: `{next_wd_number}/10` (লিমিট)\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"🏠 **পেমেন্ট ডিটেইলস:**\n"
         f"{method_details}\n"
@@ -588,21 +596,21 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
         f"পেমেন্ট করে নিচের বাটনে ক্লিক করুন 👇"
     )
 
- # অ্যাডমিনকে পাঠানোর কিবোর্ড অংশটুকু এভাবে লিখুন
     kb = types.InlineKeyboardMarkup()
     kb.add(
-    types.InlineKeyboardButton("✅ Approve", callback_data=f"admin_payment_approve_{user_id}_{amount}"),
-    types.InlineKeyboardButton("❌ Reject", callback_data=f"admin_payment_reject_{user_id}_{amount}")
+        # এখানে callback_data তে commission যোগ করা হয়েছে যাতে এপ্রুভ করলে বট টাকা পাঠাতে পারে
+        types.InlineKeyboardButton("✅ Approve", callback_data=f"admin_payment_approve_{user_id}_{amount}_{commission}"),
+        types.InlineKeyboardButton("❌ Reject", callback_data=f"admin_payment_reject_{user_id}_{amount}")
     )
 
     await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb, parse_mode="Markdown")
     
+    # --- এরপর আগের মতোই থাকবে ---
     await message.answer(
-        f"✅ **আপনার উইথড্র রিকোয়েস্ট জমা হয়েছে!**\n"
-        f"💰 পরিমাণ: {amount} ৳\n"
-        f"⏳ অ্যাডমিন চেক করে এপ্রুভ করলে আপনি নোটিফিকেশন পাবেন।",
+        f"✅ **আপনার উইথড্র রিকোয়েস্ট জমা হয়েছে!**\n...",
         reply_markup=main_menu()
     )
+    
     await state.finish()
     
 # ৪. এডমিন প্যানেল
