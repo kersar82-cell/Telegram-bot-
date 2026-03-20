@@ -162,24 +162,27 @@ async def start(message: types.Message, state: FSMContext):
     # ২. যদি ইউজার একদম নতুন হয় (ডাটাবেসে নেই)
     if not existing_user:
         referrer_id = 0
-        # যদি সে কারো রেফারেল লিংকে ক্লিক করে আসে
         if args and args.isdigit():
-            referrer_id = int(args)
-            if referrer_id != user_id:
-                # রেফারারের কাউন্ট ১ বাড়িয়ে দেওয়া
+            temp_id = int(args)
+            # চেক করা হচ্ছে ইউজার নিজের লিংকে নিজে ক্লিক করেছে কি না
+            if temp_id != user_id:
+                referrer_id = temp_id
+                # ১. রেফারারের কাউন্ট ১ বাড়ানো
                 cursor.execute("UPDATE users SET referral_count = referral_count + 1 WHERE user_id = ?", (referrer_id,))
                 db.commit()
                 
-                # রেফারারকে অভিনন্দন জানানো
+                # ২. রেফারারকে মেসেজ পাঠানো
                 try:
                     await bot.send_message(referrer_id, "🔔 **অভিনন্দন!**\n\nআপনার রেফারেল লিঙ্ক ব্যবহার করে একজন নতুন ইউজার জয়েন করেছে। 🥳")
                 except:
                     pass
-        
-        # নতুন ইউজারকে ডাটাবেসে সেভ করা
-        # নতুন সংশোধিত লাইন:
-        cursor.execute("INSERT INTO users (user_id, username, referred_by) VALUES (?, ?, ?)", (user_id, username, referrer_id))
+
+        # ৩. ডাটাবেসে নতুন ইউজার সেভ করা (আপনার সব কলামের সিরিয়াল ঠিক রেখে)
+        # কলামগুলো: user_id, username, balance, referral_count, referred_by, refer_balance, withdraw_count
+        sql = "INSERT INTO users (user_id, username, balance, referral_count, referred_by, refer_balance, withdraw_count) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        cursor.execute(sql, (user_id, username, 0.0, 0, referrer_id, 0.0, 0))
         db.commit()
+            
     else:
         # যদি ইউজার আগে থেকেই থাকে, শুধু ইউজারনেম আপডেট করা (ঐচ্ছিক)
         cursor.execute("UPDATE users SET username = ? WHERE user_id = ?", (username, user_id))
