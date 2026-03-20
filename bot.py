@@ -176,7 +176,8 @@ async def start(message: types.Message, state: FSMContext):
                     pass
         
         # নতুন ইউজারকে ডাটাবেসে সেভ করা
-        cursor.execute("INSERT INTO users (user_id, username) VALUES (?, ?)", (user_id, username))
+        # নতুন সংশোধিত লাইন:
+        cursor.execute("INSERT INTO users (user_id, username, referred_by) VALUES (?, ?, ?)", (user_id, username, referrer_id if args and args.isdigit() else 0))
         db.commit()
     else:
         # যদি ইউজার আগে থেকেই থাকে, শুধু ইউজারনেম আপডেট করা (ঐচ্ছিক)
