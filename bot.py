@@ -213,10 +213,7 @@ async def start(message: types.Message, state: FSMContext):
 📌 Facebook FBc00Fnd: ৫.৮০ ৳
 
 🏠 Support: @Dinanhaji"""
-
     # ৪. ইউজারকে মেসেজ পাঠানো
-        # ১. প্রথমে চেক করবে ইউজার গ্রুপে আছে কি না
-        # ৪. ইউজারকে মেসেজ পাঠানো
     is_joined = await check_user_joined(user_id)
     
     if not is_joined:
@@ -225,20 +222,17 @@ async def start(message: types.Message, state: FSMContext):
         join_kb.add(types.InlineKeyboardButton("✅ জয়েন করেছি", callback_data="check_join_now"))
         
         await message.answer(
-            f"👋 হ্যালো {user_name}!\n\n"
+            f"👋 হ্যালো {message.from_user.full_name}!\n\n"
             "আমাদের বটটি ব্যবহার করতে হলে আপনাকে অবশ্যই নিচের গ্রুপে জয়েন করতে হবে।\n"
             "জয়েন করার পর '✅ জয়েন করেছি' বাটনে ক্লিক করুন।",
             reply_markup=join_kb
         )
-        return  # এই লাইনটি আপনার স্ক্রিনশটে নেই, এটি অবশ্যই লাগবে।
+        return  # এই লাইনটি নিশ্চিত করবে যে জয়েন না থাকলে নিচের মেইন মেনু আসবে না।
 
-    # এই নিচের অংশটুকু বাম দিক থেকে শুরু হবে (if এর সোজা নিচে)
+    # এই নিচের লাইনগুলো একদম বাম পাশ থেকে (await এর নিচে নিচে) শুরু হবে
     await message.answer(welcome_text, reply_markup=inline_kb, parse_mode="Markdown")
     await message.answer("✅ আপনার কাজের ধরণ বেছে নিন:", reply_markup=main_menu())
-        
-    # ২. যদি অলরেডি জয়েন থাকে, তবেই আপনার আগের মেসেজগুলো যাবে
-    await message.answer(welcome_text, reply_markup=inline_kb, parse_mode="Markdown")
-    await message.answer("✅ আপনার কাজের ধরণ বেছে নিন:", reply_markup=main_menu())
+    
 @dp.callback_query_handler(text="check_join_now")
 async def check_join_callback(call: types.CallbackQuery):
     is_joined = await check_user_joined(call.from_user.id)
