@@ -224,7 +224,7 @@ async def ask_work_type(message: types.Message, state: FSMContext):
     else:
         inline_kb.add(btn_file, btn_single)
 
-    await message.answer(f"✅ আপনি বেছে নিয়েছেন: **{message.text}**\n\nএখন কিভাবে ডাটা জমা দিতে চান? নিচের বাটন থেকে সিলেক্ট করুন।", 
+    await message.answer(f"✅ আপনি বেছে নিয়েছেন: **{message.text}**\n\n━━━━━━━━━━━━━━━\n\nএখন কিভাবে ডাটা জমা দিতে চান? নিচের বাটন থেকে সিলেক্ট করুন।", 
                          reply_markup=inline_kb, 
                          parse_mode="Markdown")
     
@@ -871,7 +871,7 @@ async def support_message(message: types.Message):
 # ১. মেনু বাটন ফাংশন (নিশ্চিত করুন নামটি সঠিক)
 def work_v2_menu():
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add("FB 00 Fnd 2fa", "IG Cookies") 
+    keyboard.add("FB 00 Fnd 2fa") 
     keyboard.add("🔄 রিফ্রেশ") 
     return keyboard
 
@@ -894,13 +894,15 @@ async def work_v2_handler(message: types.Message):
 async def work_v2_options(message: types.Message, state: FSMContext):
     await state.update_data(category=message.text)
     
-    # ইনলাইন কিবোর্ড তৈরি (row_width সেট করা হয়েছে যাতে বাটনগুলো সাজানো থাকে)
+    # ইনলাইন কিবোর্ড তৈরি
     inline_kb = types.InlineKeyboardMarkup(row_width=2)
-        # সাধারণ ফাইল এবং সিঙ্গেল আইডি বাটন
+    
+    # বাটনগুলো তৈরি করা হলো
     btn_file = types.InlineKeyboardButton("📁 File", callback_data="type_file")
     btn_single = types.InlineKeyboardButton("🆔 Single ID", callback_data="type_single")
     
-    # শর্ত: শুধুমাত্র IG Cookies হলে নতুন বাটনটি যোগ হবে
+    # 🛑 এই লাইনটি আপনার কোডে নেই, এটি অবশ্যই যোগ করতে হবে:
+    inline_kb.add(btn_file, btn_single) 
     
     msg_text = (
         f"✅ আপনি বেছে নিয়েছেন: **{message.text}**\n"
@@ -909,7 +911,7 @@ async def work_v2_options(message: types.Message, state: FSMContext):
     )
     
     await message.answer(msg_text, reply_markup=inline_kb, parse_mode="Markdown")
-                      
+                          
 #মেসেজ
 @dp.message_handler(commands=['msg'], user_id=ADMIN_ID)
 async def admin_direct_msg(message: types.Message):
