@@ -1134,61 +1134,7 @@ async def get_all_users(message: types.Message):
         response_text += f"━━━━━━━━━━━━━━━\n✅ মোট ইউজার: {count} জন"
         await message.answer(response_text, parse_mode="Markdown")
 
-import datetime
 
-@dp.message_handler(commands=['todaystats'], user_id=ADMIN_ID)
-async def get_today_stats(message: types.Message):
-    today = datetime.datetime.now().strftime("%Y-%m-%d")
-    
-    # ১. ডাটাবেস থেকে সব ইউজার এবং তাদের আজকের কাজের তথ্য আনা
-    cursor.execute("""
-        SELECT users.user_id, users.username, stats.file_count, stats.single_id_count 
-        FROM users 
-        LEFT JOIN stats ON users.user_id = stats.user_id AND stats.date = ?
-    """, (today,))
-    
-    all_users = cursor.fetchall()
-
-    if not all_users:
-        return await message.answer("❌ ডাটাবেসে কোনো ইউজার পাওয়া যায়নি।")
-
-    worked_list = []      # যারা কাজ করেছে
-    not_worked_list = []  # যারা কাজ করেনি
-
-    for user in all_users:
-        uid, uname, f_count, s_count = user
-        f_count = f_count if f_count else 0
-        s_count = s_count if s_count else 0
-        username = uname if uname else "No Username"
-
-        if f_count > 0 or s_count > 0:
-            worked_list.append(f"✅ 🆔 `{uid}` | {username}\n   └📁 ফাইল: {f_count} | 🆔 সিঙ্গেল: {s_count}")
-        else:
-            not_worked_list.append(f"❌ 🆔 `{uid}` | {username}")
-
-    # ২. মেসেজ সাজানো
-    response_text = f"📊 **আজকের রিপোর্ট ({today})**\n\n"
-    
-    response_text += "🔥 **যারা কাজ জমা দিয়েছে:**\n━━━━━━━━━━━━━━━\n"
-    if worked_list:
-        response_text += "\n\n".join(worked_list)
-    else:
-        response_text += "আজ এখন পর্যন্ত কেউ কাজ করেনি।"
-
-    response_text += "\n\n😴 **যারা এখনো কাজ দেয়নি:**\n━━━━━━━━━━━━━━━\n"
-    if not_worked_list:
-        response_text += "\n".join(not_worked_list)
-    else:
-        response_text += "সবাই আজকে কাজ করেছে!"
-
-    # ৩. মেসেজ পাঠানো (অনেক বড় হলে ভাগ করে পাঠানো)
-    if len(response_text) > 4000:
-        # মেসেজ খুব বড় হলে পার্ট পার্ট করে পাঠানো
-        for i in range(0, len(response_text), 4000):
-            await message.answer(response_text[i:i+4000], parse_mode="Markdown")
-    else:
-        await message.answer(response_text, parse_mode="Markdown")
-#==============
 # ৪. উইথড্র এপ্রুভ/রিজেক্ট বাটন প্রসেস
 # ==========================================
 @dp.callback_query_handler(lambda c: c.data.startswith('admin_payment_'), user_id=ADMIN_ID)
@@ -1718,7 +1664,70 @@ async def check_user_work(message: types.Message):
         report += f"🔹 `{row[0]}` | {row[1]} টি\n"
 
     await message.answer(report, parse_mode="Markdown")
+@dp.message_handler(commands=['worked_users'], user_id=ADMIN_ID)
+async def worked_users_list(message: types.Message):
+    # 'stats' টেবিল থেকে ইউজারদের আইডি এবং মোট কাজের সংখ্যা আনা
+    cursor.execute("SELECT user_id, SUM(single_id_count) FROM stats GROUP BY user_id")
+    rows = cursor.fetchall()
+    
+    if not rows:
+        return await message.answer("❌ এখন পর্যন্ত কেউ কাজ জমা দেয়নি।")
+    
+    response_text = "✅ **কাজ জমা দেওয়া ইউজারদের তালিকা:**\n\n"
+    count = 0
+    
+    for row in rows:
+        u_id = row[0]
+        total_work = row[1]
         
+        # users টেবিল থেকে ওই ইউজারের নাম আনা
+        cursor.execute("SELECT username FROM users WHERE user_id = ?", (u_id,))
+        user_info = cursor.fetchone()
+        name = user_info[0] if user_info and user_info[0] else "No Name"
+        
+        # ইউজার লিঙ্কিং সহ লাইন (নামে ক্লিক করলে ইনবক্স ওপেন হবে)
+        line = f"👤 [{name}](tg://user?id={u_id}) | `{u_id}` | কাজ: {total_work}টি\n"
+        
+        if len(response_text) + len(line) > 3000:
+            await message.answer(response_text, parse_mode="Markdown")
+            response_text = "" 
+            
+        response_text += line
+        count += 1
+            
+    response_text += f"\n📊 **মোট কাজ করেছে:** {count} জন"
+    await message.answer(response_text, parse_mode="Markdown")
+@dp.message_handler(commands=['not_worked'], user_id=ADMIN_ID)
+async def not_worked_users_list(message: types.Message):
+    # যারা 'users' টেবিলে আছে কিন্তু 'stats' টেবিলে একবারও নাম উঠেনি
+    cursor.execute("""
+        SELECT user_id, username FROM users 
+        WHERE user_id NOT IN (SELECT DISTINCT user_id FROM stats)
+    """)
+    rows = cursor.fetchall()
+    
+    if not rows:
+        return await message.answer("🎉 চমৎকার! সব ইউজারই কাজ করেছে।")
+    
+    response_text = "⚠️ **যারা এখনো কোনো কাজ দেয়নি:**\n\n"
+    count = 0
+    
+    for row in rows:
+        u_id = row[0]
+        name = row[1] if row[1] else "No Name"
+        
+        line = f"❌ [{name}](tg://user?id={u_id}) | `{u_id}`\n"
+        
+        if len(response_text) + len(line) > 3000:
+            await message.answer(response_text, parse_mode="Markdown")
+            response_text = ""
+            
+        response_text += line
+        count += 1
+            
+    response_text += f"\n📊 **মোট অলস ইউজার:** {count} জন"
+    await message.answer(response_text, parse_mode="Markdown")
+    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
