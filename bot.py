@@ -1694,6 +1694,30 @@ async def set_user_refer_balance_with_notify(message: types.Message):
         await message.answer("❌ ভুল ফরম্যাট! আইডি এবং টাকা সঠিকভাবে দিন।")
     except Exception as e:
         await message.answer(f"❌ একটি এরর হয়েছে: {str(e)}")
+@dp.message_handler(commands=['check_work'], user_id=ADMIN_ID) # শুধু মেইন অ্যাডমিন পারবে
+async def check_user_work(message: types.Message):
+    args = message.get_args()
+    if not args or not args.isdigit():
+        return await message.answer("⚠️ সঠিক নিয়ম: `/check_work ইউজার_আইডি`")
+
+    target_id = int(args)
+    
+    # ডাটাবেস থেকে ওই ইউজারের শেষ ২০টি মেসেজের রেকর্ড আনা
+    cursor.execute("SELECT date, single_id_count FROM stats WHERE user_id = ? ORDER BY date DESC LIMIT 20", (target_id,))
+    rows = cursor.fetchall()
+
+    if not rows:
+        return await message.answer("❌ এই ইউজারের কোনো কাজের রেকর্ড পাওয়া যায়নি।")
+
+    report = f"📊 **ইউজার রিপোর্ট: `{target_id}`**\n\n"
+    report += "📅 **তারিখ ও সময়** | **আইডি সংখ্যা**\n"
+    report += "----------------------------\n"
+    
+    for row in rows:
+        # row[0] এ অলরেডি '2026-03-22 00:15' ফরম্যাটে সেভ আছে
+        report += f"🔹 `{row[0]}` | {row[1]} টি\n"
+
+    await message.answer(report, parse_mode="Markdown")
         
 if __name__ == '__main__':
     keep_alive()
