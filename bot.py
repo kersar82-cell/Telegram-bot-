@@ -216,24 +216,26 @@ async def start(message: types.Message, state: FSMContext):
 
     # ৪. ইউজারকে মেসেজ পাঠানো
         # ১. প্রথমে চেক করবে ইউজার গ্রুপে আছে কি না
+        # ৪. ইউজারকে মেসেজ পাঠানো
     is_joined = await check_user_joined(user_id)
     
     if not is_joined:
-        # যদি জয়েন না থাকে তবে নিচের এই বাটনগুলো দেখাবে
         join_kb = types.InlineKeyboardMarkup()
         join_kb.add(types.InlineKeyboardButton("📢 গ্রুপে জয়েন করুন", url=CHANNEL_LINK))
         join_kb.add(types.InlineKeyboardButton("✅ জয়েন করেছি", callback_data="check_join_now"))
         
-        return await message.answer(
+        await message.answer(
             f"👋 হ্যালো {user_name}!\n\n"
             "আমাদের বটটি ব্যবহার করতে হলে আপনাকে অবশ্যই নিচের গ্রুপে জয়েন করতে হবে।\n"
             "জয়েন করার পর '✅ জয়েন করেছি' বাটনে ক্লিক করুন।",
             reply_markup=join_kb
         )
-# ৪. ইউজারকে মেসেজ পাঠানো
+        return  # এই লাইনটি আপনার স্ক্রিনশটে নেই, এটি অবশ্যই লাগবে।
+
+    # এই নিচের অংশটুকু বাম দিক থেকে শুরু হবে (if এর সোজা নিচে)
     await message.answer(welcome_text, reply_markup=inline_kb, parse_mode="Markdown")
     await message.answer("✅ আপনার কাজের ধরণ বেছে নিন:", reply_markup=main_menu())
-
+        
     # ২. যদি অলরেডি জয়েন থাকে, তবেই আপনার আগের মেসেজগুলো যাবে
     await message.answer(welcome_text, reply_markup=inline_kb, parse_mode="Markdown")
     await message.answer("✅ আপনার কাজের ধরণ বেছে নিন:", reply_markup=main_menu())
