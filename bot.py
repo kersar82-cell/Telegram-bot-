@@ -233,9 +233,13 @@ async def work_start(message: types.Message):
     if await is_blocked(message.from_user.id):
         return await message.answer("❌ দুঃখিত, আপনি ব্লকড! আপনি আর কাজ জমা দিতে পারবেন না। /nএডমিনের সাথে কথা বলুন 👍")
     
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add("IG Mother Account", "IG 2fa","IG Cookies")
-    keyboard.add("🔄 রিফ্রেশ") 
+        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    
+    # প্রথম লাইনে এই দুটি বাটন থাকবে
+    keyboard.row("IG Mother Account", "IG 2fa")
+    
+    # দ্বিতীয় লাইনে IG Cookies বাটনটি একা থাকবে
+    keyboard.row("IG Cookies", "🔄রিফ্রেশ") 
     
     msg = """Nord VPN 🫱
     🤩Mail: * 3tx0zztil1@xkxkud.com *
