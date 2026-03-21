@@ -206,7 +206,7 @@ async def start(message: types.Message, state: FSMContext):
     await message.answer("✅ আপনার কাজের ধরণ বেছে নিন:", reply_markup=main_menu())
     
 # =========================================
-@dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa","IG Cookies"])
+@dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa", "IG Cookies"])
 async def ask_work_type(message: types.Message, state: FSMContext):
     # এই লাইনগুলো বাম দিক থেকে ৪টি স্পেস ডানে থাকবে
     await state.update_data(category=message.text)
