@@ -245,13 +245,16 @@ async def work_start(message: types.Message):
     # সবশেষে রিফ্রেশ বাটন
     keyboard.row("🔄 রিফ্রেশ") 
     
-    msg = """Nord VPN 👈
-    🤩Mail: * 3tx0zztil1@xkxkud.com *
-    Pass: * RJR83@RdFr2@ *
+    msg = """ 𝗡𝗢𝗥𝗗 𝗩𝗣𝗡 𝗣𝗥𝗘𝗠𝗜𝗨𝗠
+━━━━━━━━━━━━━━━━━━
+🥲 Email = `chriskr508@gmail.com`
+🔐 Pass  = `Automan1012`
 
-    ... (বাকি টেক্সট) ...
+🥲 Email = `evanmkma2011@gmail.com`
+🔐 Pass  = `Devamar88!#`
 
-    🔴 আপনার কাজের ক্যাটাগরি বেছে নিন:"""
+🥲Email = `gaughan9999@hotmail.co.uk`
+🔐Pass  = `Auders*1`"""
     
     await message.answer(msg, reply_markup=keyboard)
     
