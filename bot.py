@@ -206,7 +206,7 @@ async def start(message: types.Message, state: FSMContext):
     await message.answer("✅ আপনার কাজের ধরণ বেছে নিন:", reply_markup=main_menu())
     
 # =========================================
-@dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa"])
+@dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa","IG Cookies"])
 async def ask_work_type(message: types.Message, state: FSMContext):
     # এই লাইনগুলো বাম দিক থেকে ৪টি স্পেস ডানে থাকবে
     await state.update_data(category=message.text)
@@ -214,7 +214,15 @@ async def ask_work_type(message: types.Message, state: FSMContext):
     inline_kb = types.InlineKeyboardMarkup()
     inline_kb.add(types.InlineKeyboardButton("🗃️ File", callback_data="type_file"))
     inline_kb.add(types.InlineKeyboardButton("👤 Single ID", callback_data="type_single"))
-    await message.answer("✅ আপনার কাজের ধরণ বেছে নিন:", reply_markup=inline_kb)
+        # 👇 এই নতুন অংশটুকু এখানে যোগ করা হয়েছে
+    if message.text == "IG Cookies":
+        btn_link = types.InlineKeyboardButton("🔗 Submit Link", url="https://t.me/instafb_hub/108")
+        inline_kb.add(btn_file, btn_single)
+        inline_kb.add(btn_link) # শুধু কুকিজ হলে এই বাটনটি আসবে
+    else:
+        inline_kb.add(btn_file, btn_single)
+    
+    await message.answer(f"✅ আপনি বেছে নিয়েছেন: **{message.text}**\nআপনার কাজের ধরণ বেছে নিন:", reply_markup=inline_kb, parse_mode="Markdown")
 @dp.message_handler(lambda message: message.text == "💻INSTAGRAM WORK")
 async def work_start(message: types.Message):
     if await is_blocked(message.from_user.id):
@@ -877,7 +885,7 @@ async def work_v2_handler(message: types.Message):
 
 # ৩. ক্যাটাগরি সিলেক্ট করার হ্যান্ডলার
 # ৩. ক্যাটাগরি সিলেক্ট করার হ্যান্ডলার
-@dp.message_handler(lambda message: message.text in ["FB 00 Fnd 2fa", "IG Cookies"])
+@dp.message_handler(lambda message: message.text in ["FB 00 Fnd 2fa"])
 async def work_v2_options(message: types.Message, state: FSMContext):
     await state.update_data(category=message.text)
     
