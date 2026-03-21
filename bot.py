@@ -221,15 +221,21 @@ async def ask_work_type(message: types.Message, state: FSMContext):
         inline_kb.add(btn_link) # শুধু কুকিজ হলে এই বাটনটি আসবে
     else:
         inline_kb.add(btn_file, btn_single)
+    msg_text = (
+        f"✅ আপনি বেছে নিয়েছেন: **{message.text}**\n"
+        "━━━━━━━━━━━━━━━\n"
+        "এখন কিভাবে ডাটা জমা দিতে চান? নিচের বাটন থেকে সিলেক্ট করুন।"
+    )
     
-    await message.answer(f"✅ আপনি বেছে নিয়েছেন: **{message.text}**\nআপনার কাজের ধরণ বেছে নিন:", reply_markup=inline_kb, parse_mode="Markdown")
+    await message.answer(msg_text, reply_markup=inline_kb, parse_mode="Markdown")
+                      
 @dp.message_handler(lambda message: message.text == "💻INSTAGRAM WORK")
 async def work_start(message: types.Message):
     if await is_blocked(message.from_user.id):
         return await message.answer("❌ দুঃখিত, আপনি ব্লকড! আপনি আর কাজ জমা দিতে পারবেন না। /nএডমিনের সাথে কথা বলুন 👍")
     
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add("IG Mother Account", "IG 2fa")
+    keyboard.add("IG Mother Account", "IG 2fa","IG Cookies")
     keyboard.add("🔄 রিফ্রেশ") 
     
     msg = """Nord VPN 🫱
