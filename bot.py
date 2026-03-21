@@ -228,31 +228,31 @@ async def ask_work_type(message: types.Message, state: FSMContext):
                          reply_markup=inline_kb, 
                          parse_mode="Markdown")
     
+
 @dp.message_handler(lambda message: message.text == "💻INSTAGRAM WORK")
 async def work_start(message: types.Message):
     if await is_blocked(message.from_user.id):
-        return await message.answer("❌ দুঃখিত, আপনি ব্লকড! আপনি আর কাজ জমা দিতে পারবেন না। /nএডমিনের সাথে কথা বলুন 👍")
+        return await message.answer("❌ দুঃখিত, আপনি ব্লকড!")
     
-        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     
     # প্রথম লাইনে এই দুটি বাটন থাকবে
     keyboard.row("IG Mother Account", "IG 2fa")
     
     # দ্বিতীয় লাইনে IG Cookies বাটনটি একা থাকবে
-    keyboard.row("IG Cookies", "🔄রিফ্রেশ") 
+    keyboard.row("IG Cookies")
     
-    msg = """Nord VPN 🫱
+    # সবশেষে রিফ্রেশ বাটন
+    keyboard.row("🔄 রিফ্রেশ") 
+    
+    msg = """Nord VPN 👈
     🤩Mail: * 3tx0zztil1@xkxkud.com *
     Pass: * RJR83@RdFr2@ *
 
-    🤩Mail: * 377guy1zb4@dollicons.com *
-    Pass: * RJR83@RdFr2@ *
+    ... (বাকি টেক্সট) ...
 
-    🤩Mail: * icufc65r6j@dollicons.com *
-    Pass: * RJR83@RdFr2@ *
-    
-    👍 যেকোনো সমস্যায়: @Dinanhaji !
     🔴 আপনার কাজের ক্যাটাগরি বেছে নিন:"""
+    
     await message.answer(msg, reply_markup=keyboard)
     
 
