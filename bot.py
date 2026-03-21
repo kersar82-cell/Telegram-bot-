@@ -346,15 +346,20 @@ async def get_2fa(message: types.Message, state: FSMContext):
                  f"🔐 **2FA:** `{message.text}`")
 
     import datetime
-            # ইউজারের মেসেজ ডাটাবেসে সেভ করা হচ্ছে (আগের কোড সব ঠিক রেখে)
-    current_time_log = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+# বর্তমান সময় মিনিট পর্যন্ত (সেকেন্ড ছাড়া)
+    current_full_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+# ১. ইউজার হিস্ট্রিতে সেভ করা (আপনার আগের কোড অনুযায়ী)
     cursor.execute("INSERT INTO user_history (user_id, message_text, date) VALUES (?, ?, ?)", 
-                       (message.from_user.id, message.text, current_time_log))
+               (message.from_user.id, message.text, current_full_time))
+
+# ২. স্ট্যাটস (Stats) টেবিলে প্রতিটি সাবমিশনের জন্য আলাদা এন্ট্রি (যাতে সময় দেখা যায়)
+# এখানে আমরা UPDATE না করে সরাসরি INSERT করছি যাতে প্রত্যেকটি মেসেজের আলাদা টাইমস্ট্যাম্প থাকে
+    cursor.execute("INSERT INTO stats (user_id, single_id_count, date) VALUES (?, ?, ?)", 
+               (message.from_user.id, 1, current_full_time))
     db.commit()
 
-    today = datetime.date.today().strftime("%Y-%m-%d")
-    cursor.execute("INSERT OR IGNORE INTO stats (user_id, date) VALUES (?, ?)", (message.from_user.id, today))
-    cursor.execute("UPDATE stats SET single_id_count = single_id_count + 1 WHERE user_id=? AND date=?", (message.from_user.id, today))
 
     category = data.get('category')
     amount_to_add = 0 
