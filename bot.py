@@ -230,6 +230,9 @@ async def start(message: types.Message, state: FSMContext):
             "জয়েন করার পর '✅ জয়েন করেছি' বাটনে ক্লিক করুন।",
             reply_markup=join_kb
         )
+# ৪. ইউজারকে মেসেজ পাঠানো
+    await message.answer(welcome_text, reply_markup=inline_kb, parse_mode="Markdown")
+    await message.answer("✅ আপনার কাজের ধরণ বেছে নিন:", reply_markup=main_menu())
 
     # ২. যদি অলরেডি জয়েন থাকে, তবেই আপনার আগের মেসেজগুলো যাবে
     await message.answer(welcome_text, reply_markup=inline_kb, parse_mode="Markdown")
