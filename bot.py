@@ -14,6 +14,9 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 API_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID'))
 FILE_ADMIN_ID = 7446548744
+# --- ফোর্স জয়েন সেটিংস ---
+CHANNEL_ID = "@instafb_hub" 
+CHANNEL_LINK = "https://t.me/instafb_hub"
 app = Flask('')
 @app.route('/')
 def home(): return "Bot is Online!"
@@ -102,7 +105,17 @@ except:
 
 db.commit()
 print("✅ ডাটাবেজ সফলভাবে আপডেট হয়েছে!")
-    
+async def check_user_joined(user_id):
+    try:
+        member = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
+        # যদি ইউজার মেম্বার, অ্যাডমিন বা ক্রিয়েটর হয় তবে True
+        if member.status in ['member', 'administrator', 'creator']:
+            return True
+        else:
+            return False
+    except Exception:
+        return False
+
 
 class BotState(StatesGroup):
     waiting_for_file = State()
@@ -202,9 +215,43 @@ async def start(message: types.Message, state: FSMContext):
 🏠 Support: @Dinanhaji"""
 
     # ৪. ইউজারকে মেসেজ পাঠানো
+        # ১. প্রথমে চেক করবে ইউজার গ্রুপে আছে কি না
+    is_joined = await check_user_joined(user_id)
+    
+    if not is_joined:
+        # যদি জয়েন না থাকে তবে নিচের এই বাটনগুলো দেখাবে
+        join_kb = types.InlineKeyboardMarkup()
+        join_kb.add(types.InlineKeyboardButton("📢 গ্রুপে জয়েন করুন", url=CHANNEL_LINK))
+        join_kb.add(types.InlineKeyboardButton("✅ জয়েন করেছি", callback_data="check_join_now"))
+        
+        return await message.answer(
+            f"👋 হ্যালো {user_name}!\n\n"
+            "আমাদের বটটি ব্যবহার করতে হলে আপনাকে অবশ্যই নিচের গ্রুপে জয়েন করতে হবে।\n"
+            "জয়েন করার পর '✅ জয়েন করেছি' বাটনে ক্লিক করুন।",
+            reply_markup=join_kb
+        )
+
+    # ২. যদি অলরেডি জয়েন থাকে, তবেই আপনার আগের মেসেজগুলো যাবে
     await message.answer(welcome_text, reply_markup=inline_kb, parse_mode="Markdown")
     await message.answer("✅ আপনার কাজের ধরণ বেছে নিন:", reply_markup=main_menu())
+@dp.callback_query_handler(text="check_join_now")
+async def check_join_callback(call: types.CallbackQuery):
+    is_joined = await check_user_joined(call.from_user.id)
     
+    if is_joined:
+        await call.answer("✅ অভিনন্দন! আপনি গ্রুপে জয়েন করেছেন।", show_alert=True)
+        await call.message.delete() # জয়েন করার অনুরোধের মেসেজটি মুছে যাবে
+        
+        # এখানে আপনার মেইন মেনু দেখানোর কোড (আগে স্টার্টে যা ছিল)
+        welcome_text = "🎉 স্বাগতম! আপনি এখন সফলভাবে ভেরিফাইড।"
+        inline_kb = types.InlineKeyboardMarkup() # আপনার যদি কোনো ইনলাইন বাটন থাকে এখানে যোগ করবেন
+        
+        await call.message.answer(welcome_text, reply_markup=inline_kb, parse_mode="Markdown")
+        await call.message.answer("✅ আপনার কাজের ধরণ বেছে নিন:", reply_markup=main_menu())
+    else:
+        # যদি এখনো জয়েন না করে থাকে
+        await call.answer("❌ আপনি এখনো গ্রুপে জয়েন করেননি! দয়া করে জয়েন করে আবার চেষ্টা করুন।", show_alert=True)
+        
 # =========================================
 # ১. এখানে নামের বানান এবং স্পেস আপনার বাটন অনুযায়ী ঠিক করা হয়েছে
 @dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa", "IG Cookies"])
