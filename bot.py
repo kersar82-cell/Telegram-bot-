@@ -63,27 +63,30 @@ except:
     pass
     # --- ধাপ ১: ডাটাবেসে পেমেন্ট মেথড কলাম যোগ করা ---
     # --- ধাপ ১: ডাটাবেসে পেমেন্ট মেথড কলাম যোগ করা ---
-    try:
-        pay_columns = [
-            "bkash_num TEXT",
-            "nagad_num TEXT",
-            "rocket_num TEXT",
-            "binance_id TEXT",
-            "recharge_num TEXT",
-            "refer_balance REAL DEFAULT 0.0",
-            "withdraw_count INTEGER DEFAULT 0",
-            "profile_link TEXT"
-        ]
-        for column in pay_columns:
-            try:
-                cursor.execute(f"ALTER TABLE users ADD COLUMN {column}")
-                db.commit()
-            except:
-                pass
-        print("✅ Database columns checked and updated!")
-    except Exception as e:
-        print(f"Error: {e}")
-        
+    # --- ধাপ ১: ডাটাবেসে পেমেন্ট মেথড কলাম যোগ করা ---
+try:
+    cursor.execute("ALTER TABLE users ADD COLUMN bkash_num TEXT")
+    cursor.execute("ALTER TABLE users ADD COLUMN nagad_num TEXT")
+    cursor.execute("ALTER TABLE users ADD COLUMN rocket_num TEXT")
+    cursor.execute("ALTER TABLE users ADD COLUMN binance_id TEXT")
+    cursor.execute("ALTER TABLE users ADD COLUMN recharge_num TEXT")
+    db.commit()
+    print("Database columns added successfully!")
+except Exception as e:
+    # যদি কলামগুলো আগে থেকেই থাকে তবে এই এরর ইগনোর করবে
+    print(f"Note: {e}")
+    # ডাটাবেসে নতুন কলামগুলো যোগ করার কোড
+try:
+    # রেফারেল কমিশন জমানোর জন্য আলাদা ব্যালেন্স ঘর
+    cursor.execute("ALTER TABLE users ADD COLUMN refer_balance REAL DEFAULT 0")
+    # উইথড্র কতবার হয়েছে তা গুনার জন্য ঘর (১০ বার লিমিট চেক করার জন্য)
+    cursor.execute("ALTER TABLE users ADD COLUMN withdraw_count INTEGER DEFAULT 0")
+    db.commit()
+    print("✅ Database updated successfully!")
+except Exception as e:
+    # যদি কলামগুলো আগে থেকেই থাকে তবে কোনো এরর দিবে না
+    print(f"ℹ️ Database notice: {e}")
+# --- ডাটাবেজ আপডেট করার কোড (এটি নিশ্চিত
 # --- ডাটাবেজ আপডেট করার কোড (এটি নিশ্চিত করবে সব কলাম আছে) ---
 try:
     # রেফার ব্যালেন্স জমানোর জন্য কলাম
@@ -461,36 +464,6 @@ async def select_method_type(call: types.CallbackQuery):
     )
     await call.message.edit_text("আপনি কোন মাধ্যমে নম্বর সেভ করতে চান? 👇", reply_markup=kb)
 # --- ১. মোবাইল রিচার্জ নম্বর সেভ করা ---
-@dp.message_handler(state=BotState.waiting_for_recharge_num)
-async def save_recharge_db(message: types.Message, state: FSMContext):
-    num = message.text
-    user_id = message.from_user.id
-    username = message.from_user.username or "No Username"
-    
-    # ডাটাবেসে সেভ করা
-    cursor.execute("UPDATE users SET recharge_num = ? WHERE user_id = ?", (num, user_id))
-    db.commit()
-    
-    # অ্যাডমিনকে জানানো
-    admin_text = (
-        f"📱 **নতুন রিচার্জ নম্বর সেট!**\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 ইউজার: {message.from_user.full_name}\n"
-        f"🆔 আইডি: `{user_id}`\n"
-        f"🔗 ইউজারনেম: @{username}\n"
-        f"📞 নম্বর: `{num}`"
-    )
-    await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
-    
-    await message.answer(f"✅ আপনার **Mobile Recharge** নম্বর `{num}` সফলভাবে সেভ হয়েছে!", reply_markup=main_menu())
-    await state.finish()
-
-# --- ২. মোবাইল রিচার্জ নম্বর নেওয়ার জন্য ---
-@dp.callback_query_handler(text="set_recharge")
-async def ask_recharge_num(call: types.CallbackQuery):
-    await BotState.waiting_for_recharge_num.set()
-    await call.message.answer("📱 আপনার **Mobile Recharge** নম্বরটি লিখুন:")
-    await call.answer()
 
 # --- ৩. সেন্ড মানি মেথড সিলেকশন (৪টি অপশন) ---
 @dp.callback_query_handler(text="set_sendmoney")
