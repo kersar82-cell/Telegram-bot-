@@ -230,27 +230,7 @@ async def start(message: types.Message, state: FSMContext):
     
 # =========================================
 # ১. এখানে নামের বানান এবং স্পেস আপনার বাটন অনুযায়ী ঠিক করা হয়েছে
-@dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa", "IG Cookies"])
-async def ask_work_type(message: types.Message, state: FSMContext):
-    # ক্যাটাগরি সেভ করা হচ্ছে
-    await state.update_data(category=message.text)
-    
-    inline_kb = types.InlineKeyboardMarkup(row_width=2)
-    btn_file = types.InlineKeyboardButton("🗃️ File", callback_data="type_file")
-    btn_single = types.InlineKeyboardButton("👤 Single ID", callback_data="type_single")
 
-    # ২. কন্ডিশন চেক: যদি বাটন "IG Cookies" হয়
-    if message.text == "IG Cookies":
-        btn_link = types.InlineKeyboardButton("🔗 Submit Link", url="https://t.me/instafb_hub/108")
-        inline_kb.add(btn_file, btn_single)
-        inline_kb.add(btn_link)
-    else:
-        inline_kb.add(btn_file, btn_single)
-
-    await message.answer(f"✅ আপনি বেছে নিয়েছেন: **{message.text}**\n\n━━━━━━━━━━━━━━━\n\nএখন কিভাবে ডাটা জমা দিতে চান? নিচের বাটন থেকে সিলেক্ট করুন।", 
-                         reply_markup=inline_kb, 
-                         parse_mode="Markdown")
-    
 @dp.message_handler(lambda message: message.text == "💻INSTAGRAM WORK")
 async def work_start(message: types.Message):
     if await is_blocked(message.from_user.id):
@@ -278,7 +258,27 @@ async def work_start(message: types.Message):
     🔴 আপনার কাজের ক্যাটাগরি বেছে নিন:"""
     await message.answer(msg, reply_markup=keyboard)
     
+@dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa", "IG Cookies"])
+async def ask_work_type(message: types.Message, state: FSMContext):
+    # ক্যাটাগরি সেভ করা হচ্ছে
+    await state.update_data(category=message.text)
+    
+    inline_kb = types.InlineKeyboardMarkup(row_width=2)
+    btn_file = types.InlineKeyboardButton("🗃️ File", callback_data="type_file")
+    btn_single = types.InlineKeyboardButton("👤 Single ID", callback_data="type_single")
 
+    # ২. কন্ডিশন চেক: যদি বাটন "IG Cookies" হয়
+    if message.text == "IG Cookies":
+        btn_link = types.InlineKeyboardButton("🔗 Submit Link", url="https://t.me/instafb_hub/108")
+        inline_kb.add(btn_file, btn_single)
+        inline_kb.add(btn_link)
+    else:
+        inline_kb.add(btn_file, btn_single)
+
+    await message.answer(f"✅ আপনি বেছে নিয়েছেন: **{message.text}**\n\n━━━━━━━━━━━━━━━\n\nএখন কিভাবে ডাটা জমা দিতে চান? নিচের বাটন থেকে সিলেক্ট করুন।", 
+                         reply_markup=inline_kb, 
+                         parse_mode="Markdown")
+    
 # --- ইনলাইন বাটনের প্রসেসিং (File vs Single ID) ---
 @dp.callback_query_handler(lambda c: c.data.startswith('type_'), state="*")
 async def process_callback_work_type(callback_query: types.CallbackQuery):
