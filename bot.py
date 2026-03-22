@@ -1638,42 +1638,43 @@ async def set_user_refer_balance_with_notify(message: types.Message):
     except Exception as e:
         await message.answer(f"❌ একটি এরর হয়েছে: {str(e)}")
         # ==========================================
-# অ্যাডমিন কমান্ড: ইউজার লিস্ট দেখার জন্য
+# ==========================================
+# সংশোধিত ইউজার লিস্ট কমান্ড (HTML ফরম্যাটে)
 # ==========================================
 @dp.message_handler(commands=['users'], user_id=ADMIN_ID)
 async def list_all_users(message: types.Message):
     try:
-        # ডাটাবেস থেকে ইউজারদের আইডি এবং ইউজারনেম নিয়ে আসা
+        # ডাটাবেস থেকে ডাটা আনা
         cursor.execute("SELECT user_id, username FROM users")
         all_users = cursor.fetchall()
 
         if not all_users:
-            return await message.answer("⚠️ ডাটাবেসে এখন পর্যন্ত কোনো ইউজার নেই।")
+            return await message.answer("⚠️ ডাটাবেসে কোনো ইউজার পাওয়া যায়নি।")
 
-        response_text = "📊 **বট ইউজার তালিকা:**\n\n"
+        response_text = "<b>📊 ইউজার তালিকা ও প্রোফাইল:</b>\n\n"
         
         for index, user in enumerate(all_users, start=1):
             u_id = user[0]
             u_name = user[1]
 
-            # ইউজারনেম থাকলে @username দেখাবে, না থাকলে প্রোফাইল লিংক তৈরি করবে
+            # ইউজারনেম থাকলে @username দেখাবে
             if u_name and u_name != "None":
-                user_info = f"{index}. @{u_name} | ID: `{u_id}`\n"
+                user_info = f"{index}. @{u_name} | ID: <code>{u_id}</code>\n"
             else:
-                # প্রোফাইল লিংকে ক্লিক করলে সরাসরি সেই ইউজারের আইডিতে নিয়ে যাবে
-                user_info = f"{index}. [Profile Link](tg://user?id={u_id}) | ID: `{u_id}`\n"
+                # যাদের ইউজারনেম নেই, তাদের জন্য সরাসরি ক্লিকেবল প্রোফাইল লিঙ্ক
+                # এটি HTML ফরম্যাটে করা হয়েছে যা বেশি কার্যকরী
+                user_info = f"{index}. <a href='tg://user?id={u_id}'>প্রোফাইল লিঙ্ক</a> | ID: <code>{u_id}</code>\n"
             
-            # টেলিগ্রামের মেসেজ লিমিট (৪০০০ ক্যারেক্টার) চেক করা হচ্ছে
+            # টেলিগ্রামের মেসেজ লিমিট চেক
             if len(response_text) + len(user_info) > 3900:
-                await message.answer(response_text, parse_mode="Markdown")
-                response_text = "📊 **তালিকা (বাকি অংশ):**\n\n"
+                await message.answer(response_text, parse_mode="HTML")
+                response_text = "<b>📊 তালিকা (বাকি অংশ):</b>\n\n"
             
             response_text += user_info
 
-        await message.answer(response_text, parse_mode="Markdown")
+        await message.answer(response_text, parse_mode="HTML")
 
     except Exception as e:
-        # কোনো কারণে এরর হলে বট বন্ধ হবে না, শুধু আপনাকে মেসেজ দিবে
         await message.answer(f"❌ সমস্যা হয়েছে: {str(e)}")
         
 if __name__ == '__main__':
