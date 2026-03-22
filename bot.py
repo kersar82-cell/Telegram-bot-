@@ -65,16 +65,24 @@ except:
     # --- ধাপ ১: ডাটাবেসে পেমেন্ট মেথড কলাম যোগ করা ---
     # --- ধাপ ১: ডাটাবেসে পেমেন্ট মেথড কলাম যোগ করা ---
 try:
-    cursor.execute("ALTER TABLE users ADD COLUMN bkash_num TEXT")
-    cursor.execute("ALTER TABLE users ADD COLUMN nagad_num TEXT")
-    cursor.execute("ALTER TABLE users ADD COLUMN rocket_num TEXT")
-    cursor.execute("ALTER TABLE users ADD COLUMN binance_id TEXT")
-    cursor.execute("ALTER TABLE users ADD COLUMN recharge_num TEXT")
-    db.commit()
-    print("Database columns added successfully!")
-except Exception as e:
-    # যদি কলামগুলো আগে থেকেই থাকে তবে এই এরর ইগনোর করবে
-    print(f"Note: {e}")
+        # --- পেমেন্ট কলামগুলো আলাদাভাবে যোগ করার জন্য লুপ ---
+    payment_columns = [
+        "bkash_num TEXT", 
+        "nagad_num TEXT", 
+        "rocket_num TEXT", 
+        "binance_id TEXT", 
+        "recharge_num TEXT"
+    ]
+
+    for col_info in payment_columns:
+        try:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_info}")
+            db.commit()
+            print(f"✅ কলাম চেক সফল: {col_info}")
+        except Exception:
+            # যদি কলামটি আগে থেকেই থাকে, তবে এই লাইনটি চুপচাপ পরেরটায় চলে যাবে
+            continue 
+                                                           
     # ডাটাবেসে নতুন কলামগুলো যোগ করার কোড
 try:
     # রেফারেল কমিশন জমানোর জন্য আলাদা ব্যালেন্স ঘর
