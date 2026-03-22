@@ -221,7 +221,7 @@ async def start(message: types.Message, state: FSMContext):
     inline_kb.add(help_button)
 
     welcome_text = """📢 আজকের কাজের আপডেট এবং রেট লিস্ট 📢
-📌 Instagram 2FA: ২.৩০ ৳
+📌 Instagram 2FA: ২.৬০ ৳
 
 📌 Instagram Cookies: ৩.৯০ ৳
 
@@ -389,7 +389,7 @@ async def get_2fa(message: types.Message, state: FSMContext):
     elif category == "IG Mother Account":
         amount_to_add = 7
     elif category == "IG 2fa":
-        amount_to_add = 2.30
+        amount_to_add = 2.60
 
     # শুধুমাত্র সিঙ্গেল আইডি জমা দিলে ব্যালেন্স আপডেট হবে
     if amount_to_add > 0:
