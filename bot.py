@@ -936,7 +936,7 @@ async def support_message(message: types.Message):
         "যেকোনো সমস্যা বা তথ্যের জন্য নিচে ক্লিক করুন:\n\n"
         "🎥 **Bot Setup:** [VIDEO](ht)\n"
         "📢 **আপডেট গ্রুপ:** [Join Channel](https://t.me/instafbhub)\n"
-        " **ANY SUPPORT** [BOT](ht)\n"
+        " **ANY SUPPORT** [BOT](https://t.me/instafbhubsupport_bot)\n"
         "🛠 **PERSONAL** [Contact Support](https://t.me/INSTAFB_SUPPORT)\n\n"
         "✅আমরা আপনাকে দ্রুত সাহায্য করার চেষ্টা করব। ধন্যবাদ!"
     )
