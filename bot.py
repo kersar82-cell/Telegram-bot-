@@ -14,6 +14,9 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 API_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID'))
 FILE_ADMIN_ID = 7446548744
+# ফোর্জ জয়েন সেটিংস
+CHANNEL_ID = -1003869471032  # আপনার দেওয়া আইডি
+CHANNEL_LINK = "https://t.me/instafb_hub" # আপনার গ্রুপের লিঙ্ক
 app = Flask('')
 @app.route('/')
 def home(): return "Bot is Online!"
@@ -145,12 +148,32 @@ def main_menu():
     
     return keyboard
     
+async def check_joined(user_id):
+    try:
+        member = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
+        if member.status in ['member', 'administrator', 'creator']:
+            return True
+        return False
+    except Exception:
+        return False
     
 # /start কমান্ডে মেইন মেনু, রেফারেল ও ওয়েলকাম মেসেজ
 @dp.message_handler(commands=['start'], state="*")
 async def start(message: types.Message, state: FSMContext):
     await state.finish()
-    
+        # গ্রুপে জয়েন আছে কি না চেক
+    is_joined = await check_joined(user_id)
+    if not is_joined:
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.add(types.InlineKeyboardButton("📢 আমাদের গ্রুপে জয়েন করুন", url=CHANNEL_LINK))
+        keyboard.add(types.InlineKeyboardButton("✅ জয়েন করেছি", callback_data="check_join"))
+        
+        return await message.answer(
+            "👋 দুঃখিত! আপনি আমাদের গ্রুপে জয়েন নেই।\n\n"
+            "বটটি ব্যবহার করতে নিচের বাটনে ক্লিক করে গ্রুপে জয়েন করুন।",
+            reply_markup=keyboard
+        )
+        
     user_id = message.from_user.id
     username = f"@{message.from_user.username}" if message.from_user.username else "No_Username"
     args = message.get_args()
@@ -1671,6 +1694,40 @@ async def list_all_users(message: types.Message):
 
     except Exception as e:
         await message.answer(f"❌ সমস্যা হয়েছে: {str(e)}")
+    # ==========================================
+# '✅ জয়েন করেছি' বাটনের হ্যান্ডলার (নিরাপদ ভার্সন)
+# ==========================================
+@dp.callback_query_handler(text="check_join", state="*")
+async def process_check_join(callback_query: types.CallbackQuery, state: FSMContext):
+    try:
+        user_id = callback_query.from_user.id
+        
+        # আবার চেক করা হচ্ছে ইউজার গ্রুপে জয়েন করেছে কি না
+        is_member = await check_joined(user_id)
+        
+        if is_member:
+            # সুন্দর সাকসেস মেসেজ (অ্যালার্ট হিসেবে দেখাবে)
+            await callback_query.answer(
+                "✨ অভিনন্দন! আপনি সফলভাবে আমাদের গ্রুপে যোগ দিয়েছেন। এখন আপনি বটটি ব্যবহার করতে পারবেন।", 
+                show_alert=True
+            )
+            
+            # আগের "জয়েন করুন" মেসেজটি মুছে ফেলা হবে
+            await callback_query.message.delete()
+            
+            # ইউজারকে মেইন মেনুতে নিয়ে যাওয়ার জন্য স্টার্ট ফাংশনটি কল করা
+            await start(callback_query.message, state)
+            
+        else:
+            # জয়েন না করলে লাল চিহ্নে সুন্দর সতর্কবার্তা
+            await callback_query.answer(
+                "⚠️ আপনি এখনো আমাদের গ্রুপে জয়েন করেননি!\n\nদয়া করে প্রথমে গ্রুপে জয়েন করুন, তারপর এই বাটনে আবার ক্লিক করুন।", 
+                show_alert=True
+            )
+            
+    except Exception as e:
+        # কোনো যান্ত্রিক ত্রুটি হলে বট বন্ধ হবে না, শুধু আপনাকে ছোট করে জানাবে
+        await callback_query.answer(f"❌ একটি ত্রুটি হয়েছে: {str(e)}", show_alert=False)
     
 if __name__ == '__main__':
     keep_alive()
