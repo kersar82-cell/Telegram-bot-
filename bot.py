@@ -1743,54 +1743,41 @@ async def not_worked_users_list(message: types.Message):
     await message.answer(response_text, parse_mode="Markdown")
 @dp.message_handler(commands=['info'], user_id=ADMIN_ID)
 async def info_command(message: types.Message):
-    # কমান্ডের সাথে আইডি আলাদা করা
     args = message.get_args()
     if not args:
-        return await message.answer("⚠️ <b>আইডি দিতে ভুলে গেছেন!</b>\n\nসঠিক নিয়ম: <code>/info 12345678</code>", parse_mode="HTML")
+        return await message.answer("⚠️ <b>আইডি দিন।</b> উদাহরণ: <code>/info 12345678</code>", parse_mode="HTML")
 
     try:
         target_id = int(args)
-        # ডাটাবেস থেকে তথ্য নিয়ে আসা
+        # ডাটাবেস থেকে শুধু প্রয়োজনীয় তথ্যগুলো নেওয়া
         cursor.execute("""
-            SELECT username, profile_link, balance, referral_count, refer_balance, withdraw_count 
+            SELECT profile_link, balance, referral_count, refer_balance, withdraw_count 
             FROM users WHERE user_id = ?""", (target_id,))
         user_data = cursor.fetchone()
 
         if user_data:
-            # তথ্যগুলো সাজানো
-            # ইউজারনেমে আন্ডারস্কোর থাকলেও HTML মোডে এরর আসবে না
-            username = user_data[0] if user_data[0] != "No_Username" else "❌ সেট করা নেই"
-            p_link = user_data[1]
-            main_balance = user_data[2]
-            ref_count = user_data[3]
-            ref_balance = user_data[4]
-            withdraws = user_data[5]
-
-            # HTML ট্যাগ ব্যবহার করে মেসেজ ফরম্যাট
+            p_link = user_data[0]
+            
+            # আপনার রিকোয়েস্ট অনুযায়ী ইউজারনেম বাদ দিয়ে মেসেজ সাজানো
             msg = (
                 f"📊 <b>ইউজার প্রোফাইল ইনফো</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"🆔 <b>আইডি:</b> <code>{target_id}</code>\n"
-                f"📛 <b>ইউজারনেম:</b> {username}\n"
                 f"🔗 <b>প্রোফাইল:</b> <a href='{p_link}'>এখানে ক্লিক করুন</a>\n\n"
-                f"💰 <b>মেইন ব্যালেন্স:</b> {main_balance} ৳\n"
-                f"💸 <b>রেফার ব্যালেন্স:</b> {ref_balance} ৳\n"
-                f"👥 <b>মোট রেফার:</b> {ref_count} জন\n"
-                f"📥 <b>মোট উইথড্র:</b> {withdraws} বার\n"
+                f"💰 <b>মেইন ব্যালেন্স:</b> {user_data[1]} ৳\n"
+                f"💸 <b>রেফার ব্যালেন্স:</b> {user_data[3]} ৳\n"
+                f"👥 <b>মোট রেফার:</b> {user_data[2]} জন\n"
+                f"📥 <b>মোট উইথড্র:</b> {user_data[4]} বার\n"
                 f"━━━━━━━━━━━━━━━━━━━━"
             )
             
-            # parse_mode="HTML" ব্যবহার করা হয়েছে যা আন্ডারস্কোর সাপোর্ট করে
             await message.answer(msg, parse_mode="HTML", disable_web_page_preview=True)
         else:
-            await message.answer(f"❌ দুঃখিত! আইডি <b>{target_id}</b> আমাদের ডাটাবেসে নেই।", parse_mode="HTML")
+            await message.answer(f"❌ আইডি <b>{target_id}</b> ডাটাবেসে নেই।", parse_mode="HTML")
 
-    except ValueError:
-        await message.answer("⚠️ <b>আইডিটি শুধুমাত্র সংখ্যা (Number) হতে হবে।</b>", parse_mode="HTML")
     except Exception as e:
-        await message.answer(f"❌ <b>একটি সমস্যা হয়েছে:</b>\n<code>{e}</code>", parse_mode="HTML")
-            
-    
+        await message.answer(f"❌ এরর: <code>{e}</code>", parse_mode="HTML")
+                    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
