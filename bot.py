@@ -115,6 +115,11 @@ async def check_user_joined(user_id):
             return False
     except Exception:
         return False
+try:
+    cursor.execute("ALTER TABLE users ADD COLUMN profile_link TEXT")
+    db.commit()
+except:
+    pass # কলাম আগে থেকে থাকলে এরর ইগনোর করবে
 
 
 class BotState(StatesGroup):
@@ -172,7 +177,7 @@ async def start(message: types.Message, state: FSMContext):
     cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
     existing_user = cursor.fetchone()
 
-    # ২. যদি ইউজার একদম নতুন হয় (ডাটাবেসে নেই)
+        # ১৮০ নম্বর লাইন থেকে শুরু
     if not existing_user:
         referrer_id = 0
         if args and args.isdigit():
@@ -190,16 +195,25 @@ async def start(message: types.Message, state: FSMContext):
                 except:
                     pass
 
-        # ৩. ডাটাবেসে নতুন ইউজার সেভ করা (আপনার সব কলামের সিরিয়াল ঠিক রেখে)
-        # কলামগুলো: user_id, username, balance, referral_count, referred_by, refer_balance, withdraw_count
-        sql = "INSERT INTO users (user_id, username, balance, referral_count, referred_by, refer_balance, withdraw_count) VALUES (?, ?, ?, ?, ?, ?, ?)"
-        cursor.execute(sql, (user_id, username, 0.0, 0, referrer_id, 0.0, 0))
+        # --- এই অংশটুকু 'if not existing_user' এর সোজা নিচে থাকবে ---
+        # এটি ইউজারের স্থায়ী প্রোফাইল লিঙ্ক তৈরি করবে
+        user_link = f"tg://user?id={user_id}"
+        # ইউজারনেম থাকলে সেটা নিবে, না থাকলে 'No_Username'
+        username = f"@{message.from_user.username}" if message.from_user.username else "No_Username"
+
+        # ৩. ডাটাবেসে নতুন ইউজার সেভ করা (প্রোফাইল লিঙ্কসহ ৮টি কলাম)
+        sql = "INSERT INTO users (user_id, username, profile_link, balance, referral_count, referred_by, refer_balance, withdraw_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        cursor.execute(sql, (user_id, username, user_link, 0.0, 0, referrer_id, 0.0, 0))
         db.commit()
             
     else:
-        # যদি ইউজার আগে থেকেই থাকে, শুধু ইউজারনেম আপডেট করা (ঐচ্ছিক)
-        cursor.execute("UPDATE users SET username = ? WHERE user_id = ?", (username, user_id))
+        # যদি ইউজার আগে থেকেই থাকে, তথ্য আপডেট করা
+        user_link = f"tg://user?id={user_id}" # এখানেও লিঙ্কটি তৈরি করে নিতে হবে
+        username = f"@{message.from_user.username}" if message.from_user.username else "No_Username"
+        
+        cursor.execute("UPDATE users SET username = ?, profile_link = ? WHERE user_id = ?", (username, user_link, user_id))
         db.commit()
+                
 
     # ৩. ইনলাইন বাটন ও ওয়েলকাম মেসেজ সেটআপ
     inline_kb = types.InlineKeyboardMarkup(row_width=2)
@@ -1728,69 +1742,53 @@ async def not_worked_users_list(message: types.Message):
     response_text += f"\n📊 **মোট অলস ইউজার:** {count} জন"
     await message.answer(response_text, parse_mode="Markdown")
 @dp.message_handler(commands=['info'], user_id=ADMIN_ID)
-async def ultimate_user_info(message: types.Message):
+async def info_command(message: types.Message):
+    # কমান্ডের সাথে আইডিটি আলাদা করা (যেমন: /info 123456)
     args = message.get_args()
-    if not args or not args.isdigit():
-        return await message.answer("⚠️ **ব্যবহারের নিয়ম:** `/info ইউজার_আইডি`", parse_mode="Markdown")
-    
-    target_id = int(args)
-    
-    # ১. ইউজার টেবিল থেকে সকল তথ্য আনা
-    cursor.execute("""
-        SELECT username, balance, referral_count, referred_by, refer_balance, withdraw_count, 
-               bkash_num, nagad_num, rocket_num, binance_id, recharge_num 
-        FROM users WHERE user_id = ?""", (target_id,))
-    user_data = cursor.fetchone()
-    
-    if not user_data:
-        return await message.answer(f"❌ ইউজার `{target_id}` ডাটাবেসে নেই।", parse_mode="Markdown")
+    if not args:
+        return await message.answer("⚠️ **আইডি দিতে ভুলে গেছেন!**\n\nসঠিক নিয়ম: `/info 12345678`", parse_mode="Markdown")
 
-    # ২. স্ট্যাটাস টেবিল থেকে মোট কাজের সংখ্যা আনা
-    cursor.execute("SELECT SUM(file_count), SUM(single_id_count) FROM stats WHERE user_id = ?", (target_id,))
-    work_data = cursor.fetchone()
-    total_files = work_data[0] if work_data[0] else 0
-    total_ids = work_data[1] if work_data[1] else 0
+    try:
+        target_id = int(args)
+        # ডাটাবেস থেকে তথ্য খুঁজে আনা
+        cursor.execute("""
+            SELECT username, profile_link, balance, referral_count, refer_balance, withdraw_count 
+            FROM users WHERE user_id = ?""", (target_id,))
+        user_data = cursor.fetchone()
 
-    # ৩. ব্ল্যাকলিস্টে আছে কি না চেক করা
-    cursor.execute("SELECT user_id FROM blacklist WHERE user_id = ?", (target_id,))
-    is_banned = "🚫 ব্যান করা (Banned)" if cursor.fetchone() else "✅ সচল (Active)"
+        if user_data:
+            # তথ্যগুলো ভেরিয়েবলে সাজানো
+            username = user_data[0] if user_data[0] != "No_Username" else "❌ সেট করা নেই"
+            p_link = user_data[1]
+            main_balance = user_data[2]
+            ref_count = user_data[3]
+            ref_balance = user_data[4]
+            withdraws = user_data[5]
 
-    # ডেটাগুলো ভেরিয়েবলে সাজানো
-    username = user_data[0] if user_data[0] else "Unknown"
-    referred_by = user_data[3] if user_data[3] != 0 else "সরাসরি জয়েন (None)"
-    
-    # রিপোর্ট মেসেজ তৈরি
-    info_msg = (
-        f"📊 **ইউজারের সম্পূর্ণ প্রোফাইল রিপোর্ট**\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🆔 **আইডি:** `{target_id}`\n"
-        f"📛 **নাম:** {username}\n"
-        f"🚦 **অবস্থা:** {is_banned}\n"
-        f"🔗 **প্রোফাইল:** [লিঙ্ক](tg://user?id={target_id})\n\n"
-        
-        f"💰 **আর্থিক ব্যালেন্স:**\n"
-        f"┣ মেইন ব্যালেন্স: `{user_data[1]}` ৳\n"
-        f"┣ রেফার ব্যালেন্স: `{user_data[4]}` ৳\n"
-        f"┗ মোট উইথড্র: `{user_data[5]}` বার\n\n"
-        
-        f"👥 **রেফারেল নেটওয়ার্ক:**\n"
-        f"┣ মোট রেফার করেছে: `{user_data[2]}` জন\n"
-        f"┗ তাকে রেফার করেছে: `{referred_by}`\n\n"
-        
-        f"🛠 **কাজের পরিসংখ্যান:**\n"
-        f"┣ মোট ফাইল জমা: `{total_files}` টি\n"
-        f"┗ মোট আইডি জমা: `{total_ids}` টি\n\n"
-        
-        f"💳 **পেমেন্ট গেটওয়ে:**\n"
-        f"┣ বিকাশ: `{user_data[6] if user_data[6] else 'N/A'}`\n"
-        f"┣ নগদ: `{user_data[7] if user_data[7] else 'N/A'}`\n"
-        f"┣ রকেট: `{user_data[8] if user_data[8] else 'N/A'}`\n"
-        f"┣ বাইন্যান্স: `{user_data[9] if user_data[9] else 'N/A'}`\n"
-        f"┗ রিচার্জ: `{user_data[10] if user_data[10] else 'N/A'}`\n"
-        f"━━━━━━━━━━━━━━━━━━━━"
-    )
+            # সুন্দর একটি মেসেজ ফরম্যাট
+            msg = (
+                f"📊 **ইউজার প্রোফাইল ইনফো**\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🆔 **আইডি:** `{target_id}`\n"
+                f"📛 **ইউজারনেম:** {username}\n"
+                f"🔗 **প্রোফাইল:** [এখানে ক্লিক করুন]({p_link})\n\n"
+                f"💰 **মেইন ব্যালেন্স:** {main_balance} ৳\n"
+                f"💸 **রেফার ব্যালেন্স:** {ref_balance} ৳\n"
+                f"👥 **মোট রেফার:** {ref_count} জন\n"
+                f"📥 **মোট উইথড্র:** {withdraws} বার\n"
+                f"━━━━━━━━━━━━━━━━━━━━"
+            )
+            
+            # disable_web_page_preview=True দিলে মেসেজের নিচে বড় লিঙ্ক প্রিভিউ আসবে না, দেখতে সুন্দর লাগবে
+            await message.answer(msg, parse_mode="Markdown", disable_web_page_preview=True)
+        else:
+            await message.answer(f"❌ দুঃখিত! আইডি `{target_id}` আমাদের ডাটাবেসে নেই।")
 
-    await message.answer(info_msg, parse_mode="Markdown")
+    except ValueError:
+        await message.answer("⚠️ আইডিটি শুধুমাত্র সংখ্যা (Number) হতে হবে।")
+    except Exception as e:
+        await message.answer(f"❌ একটি সমস্যা হয়েছে: {e}")
+        
     
 if __name__ == '__main__':
     keep_alive()
