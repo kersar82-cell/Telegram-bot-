@@ -62,32 +62,28 @@ try:
 except:
     pass
     # --- ধাপ ১: ডাটাবেসে পেমেন্ট মেথড কলাম যোগ করা ---
-try:
-    # --- ডাটাবেস কলামগুলো আলাদাভাবে যোগ করা (নিরাপদ নিয়ম) ---
-pay_columns = [
-    "bkash_num TEXT",
-    "nagad_num TEXT",
-    "rocket_num TEXT",
-    "binance_id TEXT",
-    "recharge_num TEXT",
-    "refer_balance REAL DEFAULT 0.0",
-    "withdraw_count INTEGER DEFAULT 0",
-    "profile_link TEXT"
-]
-
-for column in pay_columns:
+    # --- ধাপ ১: ডাটাবেসে পেমেন্ট মেথড কলাম যোগ করা ---
     try:
-        cursor.execute(f"ALTER TABLE users ADD COLUMN {column}")
-        db.commit()
-    except:
-        # কলাম আগে থেকে থাকলে এরর ইগনোর করবে
-        pass
-
-print("✅ Database columns checked and updated!")
-
-except Exception as e:
-    # যদি কলামগুলো আগে থেকেই থাকে তবে কোনো এরর দিবে না
-    print(f"ℹ️ Database notice: {e}")
+        pay_columns = [
+            "bkash_num TEXT",
+            "nagad_num TEXT",
+            "rocket_num TEXT",
+            "binance_id TEXT",
+            "recharge_num TEXT",
+            "refer_balance REAL DEFAULT 0.0",
+            "withdraw_count INTEGER DEFAULT 0",
+            "profile_link TEXT"
+        ]
+        for column in pay_columns:
+            try:
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {column}")
+                db.commit()
+            except:
+                pass
+        print("✅ Database columns checked and updated!")
+    except Exception as e:
+        print(f"Error: {e}")
+        
 # --- ডাটাবেজ আপডেট করার কোড (এটি নিশ্চিত করবে সব কলাম আছে) ---
 try:
     # রেফার ব্যালেন্স জমানোর জন্য কলাম
