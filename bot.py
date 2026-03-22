@@ -1637,6 +1637,44 @@ async def set_user_refer_balance_with_notify(message: types.Message):
         await message.answer("❌ ভুল ফরম্যাট! আইডি এবং টাকা সঠিকভাবে দিন।")
     except Exception as e:
         await message.answer(f"❌ একটি এরর হয়েছে: {str(e)}")
+        # ==========================================
+# অ্যাডমিন কমান্ড: ইউজার লিস্ট দেখার জন্য
+# ==========================================
+@dp.message_handler(commands=['users'], user_id=ADMIN_ID)
+async def list_all_users(message: types.Message):
+    try:
+        # ডাটাবেস থেকে ইউজারদের আইডি এবং ইউজারনেম নিয়ে আসা
+        cursor.execute("SELECT user_id, username FROM users")
+        all_users = cursor.fetchall()
+
+        if not all_users:
+            return await message.answer("⚠️ ডাটাবেসে এখন পর্যন্ত কোনো ইউজার নেই।")
+
+        response_text = "📊 **বট ইউজার তালিকা:**\n\n"
+        
+        for index, user in enumerate(all_users, start=1):
+            u_id = user[0]
+            u_name = user[1]
+
+            # ইউজারনেম থাকলে @username দেখাবে, না থাকলে প্রোফাইল লিংক তৈরি করবে
+            if u_name and u_name != "None":
+                user_info = f"{index}. @{u_name} | ID: `{u_id}`\n"
+            else:
+                # প্রোফাইল লিংকে ক্লিক করলে সরাসরি সেই ইউজারের আইডিতে নিয়ে যাবে
+                user_info = f"{index}. [Profile Link](tg://user?id={u_id}) | ID: `{u_id}`\n"
+            
+            # টেলিগ্রামের মেসেজ লিমিট (৪০০০ ক্যারেক্টার) চেক করা হচ্ছে
+            if len(response_text) + len(user_info) > 3900:
+                await message.answer(response_text, parse_mode="Markdown")
+                response_text = "📊 **তালিকা (বাকি অংশ):**\n\n"
+            
+            response_text += user_info
+
+        await message.answer(response_text, parse_mode="Markdown")
+
+    except Exception as e:
+        # কোনো কারণে এরর হলে বট বন্ধ হবে না, শুধু আপনাকে মেসেজ দিবে
+        await message.answer(f"❌ সমস্যা হয়েছে: {str(e)}")
         
 if __name__ == '__main__':
     keep_alive()
