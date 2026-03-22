@@ -464,7 +464,37 @@ async def select_method_type(call: types.CallbackQuery):
     )
     await call.message.edit_text("আপনি কোন মাধ্যমে নম্বর সেভ করতে চান? 👇", reply_markup=kb)
 # --- ১. মোবাইল রিচার্জ নম্বর সেভ করা ---
+# --- ১. মোবাইল রিচার্জ নম্বর সেভ করা ---
+@dp.message_handler(state=BotState.waiting_for_recharge_num)
+async def save_recharge_db(message: types.Message, state: FSMContext):
+    num = message.text
+    user_id = message.from_user.id
+    username = message.from_user.username or "No Username"
+    
+    # ডাটাবেসে সেভ করা
+    cursor.execute("UPDATE users SET recharge_num = ? WHERE user_id = ?", (num, user_id))
+    db.commit()
+    
+    # অ্যাডমিনকে জানানো
+    admin_text = (
+        f"📱 **নতুন রিচার্জ নম্বর সেট!**\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 ইউজার: {message.from_user.full_name}\n"
+        f"🆔 আইডি: `{user_id}`\n"
+        f"🔗 ইউজারনেম: @{username}\n"
+        f"📞 নম্বর: `{num}`"
+    )
+    await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
+    
+    await message.answer(f"✅ আপনার **Mobile Recharge** নম্বর `{num}` সফলভাবে সেভ হয়েছে!", reply_markup=main_menu())
+    await state.finish()
 
+# --- ২. মোবাইল রিচার্জ নম্বর নেওয়ার জন্য ---
+@dp.callback_query_handler(text="set_recharge")
+async def ask_recharge_num(call: types.CallbackQuery):
+    await BotState.waiting_for_recharge_num.set()
+    await call.message.answer("📱 আপনার **Mobile Recharge** নম্বরটি লিখুন:")
+    await call.answer()
 # --- ৩. সেন্ড মানি মেথড সিলেকশন (৪টি অপশন) ---
 @dp.callback_query_handler(text="set_sendmoney")
 async def set_sendmoney_options(call: types.CallbackQuery):
