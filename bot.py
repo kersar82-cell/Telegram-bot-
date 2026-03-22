@@ -161,7 +161,9 @@ async def check_joined(user_id):
 @dp.message_handler(commands=['start'], state="*")
 async def start(message: types.Message, state: FSMContext):
     await state.finish()
-        # গ্রুপে জয়েন আছে কি না চেক
+        
+    user_id = message.from_user.id
+            # গ্রুপে জয়েন আছে কি না চেক
     is_joined = await check_joined(user_id)
     if not is_joined:
         keyboard = types.InlineKeyboardMarkup()
@@ -173,8 +175,6 @@ async def start(message: types.Message, state: FSMContext):
             "বটটি ব্যবহার করতে নিচের বাটনে ক্লিক করে গ্রুপে জয়েন করুন।",
             reply_markup=keyboard
         )
-        
-    user_id = message.from_user.id
     username = f"@{message.from_user.username}" if message.from_user.username else "No_Username"
     args = message.get_args()
     
