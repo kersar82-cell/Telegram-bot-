@@ -1727,6 +1727,70 @@ async def not_worked_users_list(message: types.Message):
             
     response_text += f"\n📊 **মোট অলস ইউজার:** {count} জন"
     await message.answer(response_text, parse_mode="Markdown")
+@dp.message_handler(commands=['info'], user_id=ADMIN_ID)
+async def ultimate_user_info(message: types.Message):
+    args = message.get_args()
+    if not args or not args.isdigit():
+        return await message.answer("⚠️ **ব্যবহারের নিয়ম:** `/info ইউজার_আইডি`", parse_mode="Markdown")
+    
+    target_id = int(args)
+    
+    # ১. ইউজার টেবিল থেকে সকল তথ্য আনা
+    cursor.execute("""
+        SELECT username, balance, referral_count, referred_by, refer_balance, withdraw_count, 
+               bkash_num, nagad_num, rocket_num, binance_id, recharge_num 
+        FROM users WHERE user_id = ?""", (target_id,))
+    user_data = cursor.fetchone()
+    
+    if not user_data:
+        return await message.answer(f"❌ ইউজার `{target_id}` ডাটাবেসে নেই।", parse_mode="Markdown")
+
+    # ২. স্ট্যাটাস টেবিল থেকে মোট কাজের সংখ্যা আনা
+    cursor.execute("SELECT SUM(file_count), SUM(single_id_count) FROM stats WHERE user_id = ?", (target_id,))
+    work_data = cursor.fetchone()
+    total_files = work_data[0] if work_data[0] else 0
+    total_ids = work_data[1] if work_data[1] else 0
+
+    # ৩. ব্ল্যাকলিস্টে আছে কি না চেক করা
+    cursor.execute("SELECT user_id FROM blacklist WHERE user_id = ?", (target_id,))
+    is_banned = "🚫 ব্যান করা (Banned)" if cursor.fetchone() else "✅ সচল (Active)"
+
+    # ডেটাগুলো ভেরিয়েবলে সাজানো
+    username = user_data[0] if user_data[0] else "Unknown"
+    referred_by = user_data[3] if user_data[3] != 0 else "সরাসরি জয়েন (None)"
+    
+    # রিপোর্ট মেসেজ তৈরি
+    info_msg = (
+        f"📊 **ইউজারের সম্পূর্ণ প্রোফাইল রিপোর্ট**\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🆔 **আইডি:** `{target_id}`\n"
+        f"📛 **নাম:** {username}\n"
+        f"🚦 **অবস্থা:** {is_banned}\n"
+        f"🔗 **প্রোফাইল:** [লিঙ্ক](tg://user?id={target_id})\n\n"
+        
+        f"💰 **আর্থিক ব্যালেন্স:**\n"
+        f"┣ মেইন ব্যালেন্স: `{user_data[1]}` ৳\n"
+        f"┣ রেফার ব্যালেন্স: `{user_data[4]}` ৳\n"
+        f"┗ মোট উইথড্র: `{user_data[5]}` বার\n\n"
+        
+        f"👥 **রেফারেল নেটওয়ার্ক:**\n"
+        f"┣ মোট রেফার করেছে: `{user_data[2]}` জন\n"
+        f"┗ তাকে রেফার করেছে: `{referred_by}`\n\n"
+        
+        f"🛠 **কাজের পরিসংখ্যান:**\n"
+        f"┣ মোট ফাইল জমা: `{total_files}` টি\n"
+        f"┗ মোট আইডি জমা: `{total_ids}` টি\n\n"
+        
+        f"💳 **পেমেন্ট গেটওয়ে:**\n"
+        f"┣ বিকাশ: `{user_data[6] if user_data[6] else 'N/A'}`\n"
+        f"┣ নগদ: `{user_data[7] if user_data[7] else 'N/A'}`\n"
+        f"┣ রকেট: `{user_data[8] if user_data[8] else 'N/A'}`\n"
+        f"┣ বাইন্যান্স: `{user_data[9] if user_data[9] else 'N/A'}`\n"
+        f"┗ রিচার্জ: `{user_data[10] if user_data[10] else 'N/A'}`\n"
+        f"━━━━━━━━━━━━━━━━━━━━"
+    )
+
+    await message.answer(info_msg, parse_mode="Markdown")
     
 if __name__ == '__main__':
     keep_alive()
