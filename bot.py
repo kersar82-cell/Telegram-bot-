@@ -1639,34 +1639,29 @@ async def set_user_refer_balance_with_notify(message: types.Message):
         await message.answer(f"❌ একটি এরর হয়েছে: {str(e)}")
         # ==========================================
 # ==========================================
-# সংশোধিত ইউজার লিস্ট কমান্ড (HTML ফরম্যাটে)
+# সব ইউজারের জন্য প্রোফাইল লিঙ্ক দেখার কমান্ড
 # ==========================================
 @dp.message_handler(commands=['users'], user_id=ADMIN_ID)
 async def list_all_users(message: types.Message):
     try:
-        # ডাটাবেস থেকে ডাটা আনা
-        cursor.execute("SELECT user_id, username FROM users")
+        # ডাটাবেস থেকে শুধু আইডি নিয়ে আসা
+        cursor.execute("SELECT user_id FROM users")
         all_users = cursor.fetchall()
 
         if not all_users:
-            return await message.answer("⚠️ ডাটাবেসে কোনো ইউজার পাওয়া যায়নি।")
+            return await message.answer("<b>⚠️ ডাটাবেসে কোনো ইউজার পাওয়া যায়নি।</b>", parse_mode="HTML")
 
-        response_text = "<b>📊 ইউজার তালিকা ও প্রোফাইল:</b>\n\n"
+        response_text = "<b>📊 বটের ইউজার তালিকা:</b>\n\n"
         
         for index, user in enumerate(all_users, start=1):
             u_id = user[0]
-            u_name = user[1]
 
-            # ইউজারনেম থাকলে @username দেখাবে
-            if u_name and u_name != "None":
-                user_info = f"{index}. @{u_name} | ID: <code>{u_id}</code>\n"
-            else:
-                # যাদের ইউজারনেম নেই, তাদের জন্য সরাসরি ক্লিকেবল প্রোফাইল লিঙ্ক
-                # এটি HTML ফরম্যাটে করা হয়েছে যা বেশি কার্যকরী
-                user_info = f"{index}. <a href='tg://user?id={u_id}'>প্রোফাইল লিঙ্ক</a> | ID: <code>{u_id}</code>\n"
+            # ইউজারনেম থাকুক বা না থাকুক, এই লিঙ্কটি ১০০% কাজ করবে
+            # 'View Profile' এ ক্লিক করলে সরাসরি আইডিতে নিয়ে যাবে
+            user_info = f"{index}. <a href='tg://user?id={u_id}'>View Profile</a> | ID: <code>{u_id}</code>\n"
             
-            # টেলিগ্রামের মেসেজ লিমিট চেক
-            if len(response_text) + len(user_info) > 3900:
+            # মেসেজ লিমিট চেক (৩০০০ ক্যারেক্টারের বেশি হলে নতুন মেসেজ পাঠাবে)
+            if len(response_text) + len(user_info) > 3500:
                 await message.answer(response_text, parse_mode="HTML")
                 response_text = "<b>📊 তালিকা (বাকি অংশ):</b>\n\n"
             
@@ -1676,7 +1671,7 @@ async def list_all_users(message: types.Message):
 
     except Exception as e:
         await message.answer(f"❌ সমস্যা হয়েছে: {str(e)}")
-        
+    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
