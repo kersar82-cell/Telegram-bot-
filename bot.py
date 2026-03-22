@@ -234,40 +234,39 @@ async def start(message: types.Message, state: FSMContext):
 @dp.message_handler(lambda message: message.text == "💻INSTAGRAM WORK")
 async def work_start(message: types.Message):
     if await is_blocked(message.from_user.id):
-        return await message.answer("❌ দুঃখিত, আপনি ব্লকড! আপনি আর কাজ জমা দিতে পারবেন না। /nএডমিনের সাথে কথা বলুন 👍")
+        return await message.answer("❌ দুঃখিত, আপনি ব্লকড! আপনি আর কাজ জমা দিতে পারবেন না। \nএডমিনের সাথে কথা বলুন 👍")
     
-        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    # সমস্যা এখানে ছিল: keyboard এর আগে অতিরিক্ত স্পেস ছিল। সেটা কমিয়ে লাইনে আনতে হবে।
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     
-    # প্রথম লাইনে এই দুটি বাটন থাকবে
+    # বাটনগুলো সাজানো
     keyboard.row("IG Mother Account", "IG 2fa")
-    
-    # দ্বিতীয় লাইনে IG Cookies বাটনটি একা থাকবে
     keyboard.row("IG Cookies", "🔄রিফ্রেশ") 
     
     msg = """Nord VPN 🫱
-    🤩Mail: * 3tx0zztil1@xkxkud.com *
-    Pass: * RJR83@RdFr2@ *
+🤩Mail: * 3tx0zztil1@xkxkud.com *
+Pass: * RJR83@RdFr2@ *
 
-    🤩Mail: * 377guy1zb4@dollicons.com *
-    Pass: * RJR83@RdFr2@ *
+🤩Mail: * 377guy1zb4@dollicons.com *
+Pass: * RJR83@RdFr2@ *
 
-    🤩Mail: * icufc65r6j@dollicons.com *
-    Pass: * RJR83@RdFr2@ *
+🤩Mail: * icufc65r6j@dollicons.com *
+Pass: * RJR83@RdFr2@ *
     
-    👍 যেকোনো সমস্যায়: @Dinanhaji !
-    🔴 আপনার কাজের ক্যাটাগরি বেছে নিন:"""
-    await message.answer(msg, reply_markup=keyboard)
-    
+👍 যেকোনো সমস্যায়: @Dinanhaji !
+🔴 আপনার কাজের ক্যাটাগরি বেছে নিন:"""
+
+    await message.answer(msg, reply_markup=keyboard, parse_mode="Markdown")
+
+# এই হ্যান্ডলারটি এখন একদম পারফেক্ট কাজ করবে
 @dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa", "IG Cookies"])
 async def ask_work_type(message: types.Message, state: FSMContext):
-    # ক্যাটাগরি সেভ করা হচ্ছে
     await state.update_data(category=message.text)
     
     inline_kb = types.InlineKeyboardMarkup(row_width=2)
     btn_file = types.InlineKeyboardButton("🗃️ File", callback_data="type_file")
     btn_single = types.InlineKeyboardButton("👤 Single ID", callback_data="type_single")
 
-    # ২. কন্ডিশন চেক: যদি বাটন "IG Cookies" হয়
     if message.text == "IG Cookies":
         btn_link = types.InlineKeyboardButton("🔗 Submit Link", url="https://t.me/instafb_hub/108")
         inline_kb.add(btn_file, btn_single)
