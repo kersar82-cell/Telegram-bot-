@@ -222,11 +222,14 @@ async def start(message: types.Message, state: FSMContext):
 
     welcome_text = """📢 আজকের কাজের আপডেট এবং রেট লিস্ট 📢
 📌 Instagram 2FA: ২.৩০ ৳
+
 📌 Instagram Cookies: ৩.৯০ ৳
+
 📌 Instagram Mother: ৭ ৳
+
 📌 Facebook FBc00Fnd: ৫.৮০ ৳
 
-🏠 Support: @Dinanhaji"""
+🔊 অবশ্যই আগে রুলস পড়ে নিবেন ।"""
     # ৪. ইউজারকে মেসেজ পাঠানো
     is_joined = await check_user_joined(user_id)
     
