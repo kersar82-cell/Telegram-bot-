@@ -1744,16 +1744,15 @@ async def not_worked_users_list(message: types.Message):
 @dp.message_handler(commands=['info'], user_id=ADMIN_ID)
 async def info_command(message: types.Message):
     args = message.get_args()
-    # আইডি না দিলে বা সংখ্যা না হলে ওয়ার্নিং দিবে
     if not args or not args.isdigit():
-        return await message.answer("⚠️ <b>নিয়ম:</b> <code>/info 12345678</code>", parse_mode="HTML")
+        return await message.answer("⚠️ <b>আইডি দিন।</b> উদাহরণ: <code>/info 12345678</code>", parse_mode="HTML")
     
     target_id = int(args)
     
     try:
-        # ডাটাবেস থেকে সকল কলামের তথ্য আনা
+        # ডাটাবেস থেকে তথ্য আনা (এখানে username কলামটিও যোগ করা হয়েছে)
         cursor.execute("""
-            SELECT balance, referral_count, referred_by, refer_balance, withdraw_count, 
+            SELECT username, balance, referral_count, referred_by, refer_balance, withdraw_count, 
                    bkash_num, nagad_num, rocket_num, binance_id, recharge_num 
             FROM users WHERE user_id = ?""", (target_id,))
         user_data = cursor.fetchone()
@@ -1761,20 +1760,22 @@ async def info_command(message: types.Message):
         if not user_data:
             return await message.answer(f"❌ ইউজার <b>{target_id}</b> ডাটাবেসে নেই।", parse_mode="HTML")
 
-        # ডাটাগুলো সাজানো (সিরিয়াল অনুযায়ী)
-        bal, ref_count, ref_by, ref_bal, w_count, bkash, nagad, rocket, binance, recharge = user_data
+        # ডাটা সাজানো
+        u_name, bal, ref_count, ref_by, ref_bal, w_count, bkash, nagad, rocket, binance, recharge = user_data
         
-        # রেফারার এবং প্রোফাইল লিঙ্ক সেটআপ
+        # ইউজারনেম না থাকলে 'User' দেখাবে
+        display_name = u_name if u_name and u_name != "No_Username" else "User"
         referred_by = f"<code>{ref_by}</code>" if ref_by and ref_by != 0 else "সরাসরি জয়েন"
-        # এই লিঙ্কটি সব সময় নীল থাকবে এবং আন্ডারস্কোর থাকলেও কাজ করবে
-        profile_url = f"<a href='tg://user?id={target_id}'>সরাসরি ইনবক্স</a>"
+        
+        # 🔗 প্রোফাইল লিঙ্কের সাথেই ইউজারনেম সেট করা (HTML ফরম্যাটে)
+        # নামের মাঝে আন্ডারস্কোর থাকলেও এটি নীল হয়ে থাকবে এবং ক্লিক করা যাবে
+        profile_link = f"<a href='tg://user?id={target_id}'>{display_name}</a>"
 
-        # আপনার চাহিদা মতো সকল তথ্য একসাথে (HTML ফরম্যাটে)
         info_msg = (
             f"📊 <b>ইউজারের সম্পূর্ণ প্রোফাইল রিপোর্ট</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"🆔 <b>আইডি:</b> <code>{target_id}</code>\n"
-            f"🔗 <b>প্রোফাইল:</b> {profile_url}\n\n"
+            f"👤 <b>প্রোফাইল:</b> {profile_link}\n\n"
             
             f"💰 <b>আর্থিক ব্যালেন্স:</b>\n"
             f" ┣ মেইন ব্যালেন্স: <code>{bal}</code> ৳\n"
@@ -1794,11 +1795,11 @@ async def info_command(message: types.Message):
             f"━━━━━━━━━━━━━━━━━━━━"
         )
 
-        # parse_mode="HTML" ব্যবহারের ফলে কোনো স্পেশাল চিহ্নে আর এরর আসবে না
+        # parse_mode="HTML" ই ব্যবহার করুন, Markdown ব্যবহার করবেন না
         await message.answer(info_msg, parse_mode="HTML", disable_web_page_preview=True)
 
     except Exception as e:
-        await message.answer(f"❌ <b>একটি সমস্যা হয়েছে:</b>\n<code>{e}</code>", parse_mode="HTML")
+        await message.answer(f"❌ এরর: <code>{e}</code>", parse_mode="HTML")
     
 if __name__ == '__main__':
     keep_alive()
