@@ -1801,6 +1801,45 @@ async def info_command(message: types.Message):
 
     except Exception as e:
         await message.answer(f"❌ এরর: <code>{e}</code>", parse_mode="HTML")
+import os
+import io
+
+# --- সকল ইউজারের তথ্য সুন্দরভাবে ফাইল আকারে পাঠানোর কমান্ড ---
+@dp.message_handler(commands=['all_users'])
+async def send_users_report(message: types.Message):
+    # আপনার অ্যাডমিন আইডি এখানে দিতে পারেন সুরক্ষার জন্য
+    # if message.from_user.id != 123456789: return 
+
+    try:
+        # ডাটাবেস থেকে সঠিক কলামগুলো সিলেক্ট করা
+        cursor.execute("SELECT user_id, balance, refer_balance, referral_count FROM users")
+        rows = cursor.fetchall()
+
+        if not rows:
+            return await message.reply("❌ ডাটাবেসে এখন পর্যন্ত কোনো ইউজার নেই।")
+
+        # একটি স্ট্রিং বা টেক্সট তৈরি করা যেখানে সব তথ্য থাকবে
+        report_text = "📊 TELEGRAM BOT USER DATABASE REPORT\n"
+        report_text += "="*50 + "\n"
+        report_text += f"{'User ID':<15} | {'Balance':<10} | {'Refer Bal':<10} | {'Total Refer':<10}\n"
+        report_text += "-"*50 + "\n"
+
+        for row in rows:
+            u_id, u_bal, u_ref_bal, u_count = row
+            # তথ্যগুলো সুন্দর করে কলাম আকারে সাজানো হচ্ছে
+            report_text += f"{str(u_id):<15} | {str(u_bal):<10} | {str(u_ref_bal):<10} | {str(u_count):<10}\n"
+        
+        report_text += "="*50 + "\n"
+        report_text += f"Total Users: {len(rows)}"
+
+        # সরাসরি মেমোরি থেকে ফাইল তৈরি করে পাঠানো (এতে এরর হওয়ার চান্স নেই)
+        buf = io.BytesIO(report_text.encode('utf-8'))
+        buf.name = "all_users_report.txt"
+        
+        await message.answer_document(buf, caption="📂 সব ইউজারের ডাটাবেস রিপোর্ট এখানে দেওয়া হলো।")
+        
+    except Exception as e:
+        await message.reply(f"⚠️ দুঃখিত, ফাইলটি তৈরি করতে সমস্যা হয়েছে। এরর: {e}")
     
 if __name__ == '__main__':
     keep_alive()
