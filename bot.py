@@ -1640,3 +1640,61 @@ async def admin_add_manual_user(message: types.Message):
         await message.answer(f"✅ সফলভাবে নতুন ইউজার অ্যাড হয়েছে!\n🆔 আইডি: `{new_id}`\n📛 নাম: `{name}`")
     except Exception as e:
         await message.answer(f"❌ এরর: এই আইডিটি অলরেডি ডাটাবেসে থাকতে পারে।")
+@dp.message_handler(commands=['set_referrer'])
+async def admin_edit_referrer(message: types.Message):
+    if message.from_user.id != ADMIN_ID: return
+
+    args = message.get_args().split()
+    if len(args) < 2:
+        return await message.answer("⚠️ নিয়ম: `/set_referrer ইউজারের_আইডি রেফারারের_আইডি`", parse_mode="Markdown")
+
+    target_id, new_ref_id = int(args[0]), int(args[1])
+
+    # ইউজারের রেফারার আপডেট করা
+    cursor.execute("UPDATE users SET referred_by = ? WHERE user_id = ?", (new_ref_id, target_id))
+    db.commit()
+    
+    await message.answer(f"✅ আপডেট সফল!\n👤 ইউজার `{target_id}` এখন থেকে 🤝 `{new_ref_id}` এর রেফারেল হিসেবে গণ্য হবে।")
+@dp.message_handler(commands=['set_ref_bal'])
+async def set_user_refer_balance_with_notify(message: types.Message):
+    # আপনার অ্যাডমিন চেক (নিশ্চিত করুন ADMIN_ID আপনার কোডে ডিফাইন করা আছে)
+    if message.from_user.id != ADMIN_ID: 
+        return
+
+    # কমান্ড থেকে আইডি এবং নতুন ব্যালেন্স নেওয়া (উদাহরণ: /set_ref_bal 12345 500)
+    args = message.get_args().split()
+    if len(args) < 2:
+        return await message.answer("⚠️ সঠিক নিয়ম: `/set_ref_bal ইউজার_আইডি নতুন_টাকা`", parse_mode="Markdown")
+
+    try:
+        target_id = int(args[0])
+        new_bal = float(args[1])
+        
+        # ১. ডাটাবেসে রেফারেল ব্যালেন্স আপডেট করা
+        cursor.execute("UPDATE users SET refer_balance = ? WHERE user_id = ?", (new_bal, target_id))
+        db.commit()
+        
+        # ২. অ্যাডমিনকে কনফার্মেশন মেসেজ দেওয়া
+        await message.answer(f"✅ ইউজার `{target_id}` এর রেফার ব্যালেন্স আপডেট করে `{new_bal:.2f} ৳` করা হয়েছে।")
+
+        # ৩. ইউজারের কাছে অটোমেটিক মেসেজ পাঠানো
+        notification_text = (
+            f"🔔 **ব্যালেন্স আপডেট নোটিশ!**\n\n"
+            f"অ্যাডমিন আপনার রেফারেল ব্যালেন্স আপডেট করেছেন।\n"
+            f"💰 **আপনার বর্তমান রেফার ব্যালেন্স:** `{new_bal:.2f} ৳`"
+        )
+        
+        try:
+            await bot.send_message(target_id, notification_text, parse_mode="Markdown")
+        except Exception as e:
+            # যদি ইউজার বট ব্লক করে রাখে বা আইডি ভুল হয়
+            await message.answer(f"⚠️ ব্যালেন্স আপডেট হয়েছে, কিন্তু ইউজারকে মেসেজ পাঠানো যায়নি (বট ব্লক থাকতে পারে)।")
+
+    except ValueError:
+        await message.answer("❌ ভুল ফরম্যাট! আইডি এবং টাকা সঠিকভাবে দিন।")
+    except Exception as e:
+        await message.answer(f"❌ একটি এরর হয়েছে: {str(e)}")
+        
+if __name__ == '__main__':
+    keep_alive()
+    executor.start_polling(dp, skip_updates=True)
