@@ -63,24 +63,28 @@ except:
     pass
     # --- ধাপ ১: ডাটাবেসে পেমেন্ট মেথড কলাম যোগ করা ---
 try:
-    cursor.execute("ALTER TABLE users ADD COLUMN bkash_num TEXT")
-    cursor.execute("ALTER TABLE users ADD COLUMN nagad_num TEXT")
-    cursor.execute("ALTER TABLE users ADD COLUMN rocket_num TEXT")
-    cursor.execute("ALTER TABLE users ADD COLUMN binance_id TEXT")
-    cursor.execute("ALTER TABLE users ADD COLUMN recharge_num TEXT")
-    db.commit()
-    print("Database columns added successfully!")
-except Exception as e:
-    # যদি কলামগুলো আগে থেকেই থাকে তবে এই এরর ইগনোর করবে
-    print(f"Note: {e}")
-    # ডাটাবেসে নতুন কলামগুলো যোগ করার কোড
-try:
-    # রেফারেল কমিশন জমানোর জন্য আলাদা ব্যালেন্স ঘর
-    cursor.execute("ALTER TABLE users ADD COLUMN refer_balance REAL DEFAULT 0")
-    # উইথড্র কতবার হয়েছে তা গুনার জন্য ঘর (১০ বার লিমিট চেক করার জন্য)
-    cursor.execute("ALTER TABLE users ADD COLUMN withdraw_count INTEGER DEFAULT 0")
-    db.commit()
-    print("✅ Database updated successfully!")
+    # --- ডাটাবেস কলামগুলো আলাদাভাবে যোগ করা (নিরাপদ নিয়ম) ---
+pay_columns = [
+    "bkash_num TEXT",
+    "nagad_num TEXT",
+    "rocket_num TEXT",
+    "binance_id TEXT",
+    "recharge_num TEXT",
+    "refer_balance REAL DEFAULT 0.0",
+    "withdraw_count INTEGER DEFAULT 0",
+    "profile_link TEXT"
+]
+
+for column in pay_columns:
+    try:
+        cursor.execute(f"ALTER TABLE users ADD COLUMN {column}")
+        db.commit()
+    except:
+        # কলাম আগে থেকে থাকলে এরর ইগনোর করবে
+        pass
+
+print("✅ Database columns checked and updated!")
+
 except Exception as e:
     # যদি কলামগুলো আগে থেকেই থাকে তবে কোনো এরর দিবে না
     print(f"ℹ️ Database notice: {e}")
