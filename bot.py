@@ -1744,40 +1744,57 @@ async def not_worked_users_list(message: types.Message):
 @dp.message_handler(commands=['info'], user_id=ADMIN_ID)
 async def info_command(message: types.Message):
     args = message.get_args()
-    if not args:
-        return await message.answer("⚠️ <b>আইডি দিন।</b> উদাহরণ: <code>/info 12345678</code>", parse_mode="HTML")
-
+    if not args or not args.isdigit():
+        return await message.answer("⚠️ <b>ব্যবহারের নিয়ম:</b> <code>/info ইউজার_আইডি</code>", parse_mode="HTML")
+    
+    target_id = int(args)
+    
     try:
-        target_id = int(args)
-        # ডাটাবেস থেকে শুধু প্রয়োজনীয় তথ্যগুলো নেওয়া
+        # শুধুমাত্র আপনার 'users' টেবিল থেকে সব তথ্য আনা
         cursor.execute("""
-            SELECT profile_link, balance, referral_count, refer_balance, withdraw_count 
+            SELECT profile_link, balance, referral_count, referred_by, refer_balance, withdraw_count, 
+                   bkash_num, nagad_num, rocket_num, binance_id, recharge_num 
             FROM users WHERE user_id = ?""", (target_id,))
         user_data = cursor.fetchone()
+        
+        if not user_data:
+            return await message.answer(f"❌ ইউজার <b>{target_id}</b> ডাটাবেসে নেই।", parse_mode="HTML")
 
-        if user_data:
-            p_link = user_data[0]
+        # তথ্যগুলো ভেরিয়েবলে সাজানো (আপনার কলামের সিরিয়াল অনুযায়ী)
+        p_link, bal, ref_count, ref_by, ref_bal, w_count, bkash, nagad, rocket, binance, recharge = user_data
+        
+        referred_by = f"<code>{ref_by}</code>" if ref_by and ref_by != 0 else "সরাসরি জয়েন (None)"
+        
+        # রিপোর্ট মেসেজ (HTML ফরম্যাটে - আন্ডারস্কোর এরর হবে না)
+        info_msg = (
+            f"📊 <b>ইউজারের সম্পূর্ণ প্রোফাইল রিপোর্ট</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🆔 <b>আইডি:</b> <code>{target_id}</code>\n"
+            f"🔗 <b>প্রোফাইল:</b> <a href='{p_link}'>সরাসরি ইনবক্স</a>\n\n"
             
-            # আপনার রিকোয়েস্ট অনুযায়ী ইউজারনেম বাদ দিয়ে মেসেজ সাজানো
-            msg = (
-                f"📊 <b>ইউজার প্রোফাইল ইনফো</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🆔 <b>আইডি:</b> <code>{target_id}</code>\n"
-                f"🔗 <b>প্রোফাইল:</b> <a href='{p_link}'>এখানে ক্লিক করুন</a>\n\n"
-                f"💰 <b>মেইন ব্যালেন্স:</b> {user_data[1]} ৳\n"
-                f"💸 <b>রেফার ব্যালেন্স:</b> {user_data[3]} ৳\n"
-                f"👥 <b>মোট রেফার:</b> {user_data[2]} জন\n"
-                f"📥 <b>মোট উইথড্র:</b> {user_data[4]} বার\n"
-                f"━━━━━━━━━━━━━━━━━━━━"
-            )
+            f"💰 <b>আর্থিক ব্যালেন্স:</b>\n"
+            f"┣ মেইন ব্যালেন্স: <code>{bal}</code> ৳\n"
+            f"┣ রেফার ব্যালেন্স: <code>{ref_bal}</code> ৳\n"
+            f"┗ মোট উইথড্র: <code>{w_count}</code> বার\n\n"
             
-            await message.answer(msg, parse_mode="HTML", disable_web_page_preview=True)
-        else:
-            await message.answer(f"❌ আইডি <b>{target_id}</b> ডাটাবেসে নেই।", parse_mode="HTML")
+            f"👥 <b>রেফারেল নেটওয়ার্ক:</b>\n"
+            f"┣ মোট রেফার করেছে: <code>{ref_count}</code> জন\n"
+            f"┗ তাকে রেফার করেছে: {referred_by}\n\n"
+            
+            f"💳 <b>সেভ করা পেমেন্ট মেথড:</b>\n"
+            f"┣ বিকাশ: <code>{bkash if bkash else 'N/A'}</code>\n"
+            f"┣ নগদ: <code>{nagad if nagad else 'N/A'}</code>\n"
+            f"┣ রকেট: <code>{rocket if rocket else 'N/A'}</code>\n"
+            f"┣ বাইন্যান্স: <code>{binance if binance else 'N/A'}</code>\n"
+            f"┗ রিচার্জ: <code>{recharge if recharge else 'N/A'}</code>\n"
+            f"━━━━━━━━━━━━━━━━━━━━"
+        )
+
+        await message.answer(info_msg, parse_mode="HTML", disable_web_page_preview=True)
 
     except Exception as e:
         await message.answer(f"❌ এরর: <code>{e}</code>", parse_mode="HTML")
-                    
+    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
