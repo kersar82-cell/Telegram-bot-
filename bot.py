@@ -1836,7 +1836,33 @@ async def toggle_refer_system(message: types.Message):
     else:
         status = "চালু" if REFER_TRANSFER_ENABLED else "বন্ধ"
         await message.answer(f"বর্তমান অবস্থা: {status}\n\nবন্ধ করতে: `/refer_system off` \nচালু করতে: `/refer_system on`")
+@dp.message_handler(commands=['work_status'], user_id=ADMIN_ID)
+async def toggle_work(message: types.Message):
+    global IG_MOTHER_ENABLED, IG_2FA_ENABLED, IG_COOKIES_ENABLED
+    args = message.get_args().split()
     
+    if len(args) < 2:
+        return await message.answer("⚠️ ফরম্যাট: `/work_status mother off` বা `/work_status 2fa on` ইত্যাদি।")
+
+    work_type = args[0].lower()
+    status = args[1].lower()
+    
+    # অন/অফ লজিক
+    is_on = True if status == "on" else False
+    status_text = "চালু" if is_on else "বন্ধ"
+
+    if work_type == "mother":
+        IG_MOTHER_ENABLED = is_on
+        await message.answer(f"✅ IG Mother Account কাজ এখন {status_text}।")
+    elif work_type == "2fa":
+        IG_2FA_ENABLED = is_on
+        await message.answer(f"✅ IG 2fa কাজ এখন {status_text}।")
+    elif work_type == "cookies":
+        IG_COOKIES_ENABLED = is_on
+        await message.answer(f"✅ IG Cookies কাজ এখন {status_text}।")
+    else:
+        await message.answer("❌ ভুল কাজের নাম! সঠিক নাম: `mother`, `2fa`, বা `cookies`।")
+
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
