@@ -17,6 +17,8 @@ FILE_ADMIN_ID = 7446548744
 # ফোর্জ জয়েন সেটিংস
 CHANNEL_ID = -1003869471032  # আপনার দেওয়া আইডি
 CHANNEL_LINK = "https://t.me/instafb_hub" # আপনার গ্রুপের লিঙ্ক
+# এটি বটের যেকোনো জায়গায় বসাতে পারেন (ফাংশনের বাইরে)
+WITHDRAW_ENABLED = True 
 app = Flask('')
 @app.route('/')
 def home(): return "Bot is Online!"
@@ -386,6 +388,9 @@ async def handle_file(message: types.Message, state: FSMContext):
 # --- ধাপ ২ এর উইথড্র মেইন মেনু ---
 @dp.message_handler(lambda message: message.text == "💳WITHDRAW")
 async def withdraw_main_menu(message: types.Message):
+        # শুধু এই অংশটুকু যোগ করবেন
+    if not WITHDRAW_ENABLED:
+        return await message.answer("⚠️ বর্তমানে পেমেন্ট সার্ভার রক্ষণাবেক্ষণের জন্য উইথড্র সাময়িকভাবে বন্ধ আছে।\n🔋আজকের রিপোর্ট আসলে তখন আমাদের গ্রুপে জানিয়ে দেওয়া হবে।তখন আপনারা উইথড্র করতে পারবেন।/n 💳 Withdraw Option খোলার সময়~~~~~~~\n⌛⏰6.pm-12pm")
     user_id = message.from_user.id
     
     # ইনলাইন কিবোর্ড তৈরি
@@ -1784,7 +1789,21 @@ async def export_users_txt(message: types.Message):
         
     except Exception as e:
         await message.answer(f"❌ ডাটা এক্সপোর্ট করতে সমস্যা হয়েছে: {str(e)}")
-
+@dp.message_handler(commands=['withdraw_status'], user_id=ADMIN_ID)
+async def toggle_withdraw(message: types.Message):
+    global WITHDRAW_ENABLED
+    command = message.get_args().lower()
+    
+    if command == "on":
+        WITHDRAW_ENABLED = True
+        await message.answer("✅ উইথড্র সিস্টেম এখন চালু করা হয়েছে।")
+    elif command == "off":
+        WITHDRAW_ENABLED = False
+        await message.answer("❌ উইথড্র সিস্টেম এখন বন্ধ করা হয়েছে।")
+    else:
+        status = "চালু" if WITHDRAW_ENABLED else "বন্ধ"
+        await message.answer(f"বর্তমান অবস্থা: {status}\n\nবন্ধ করতে লিখুন: `/withdraw_status off` \nচালু করতে লিখুন: `/withdraw_status on`", parse_mode="Markdown")
+        
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
