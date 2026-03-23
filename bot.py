@@ -1049,37 +1049,6 @@ async def show_only_rules(message: types.Message):
 async def show_user_status(message: types.Message):
     user_id = message.from_user.id
     
-    # ডাটাবেস থেকে ইউজারের ব্যালেন্স এবং অন্যান্য তথ্য আনা
-    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-    user_data = cursor.fetchone()
-    balance = user_data[0] if user_data else 0
-
-    # স্ট্যাটাস টেবিল থেকে ফাইল এবং সিঙ্গেল আইডির সংখ্যা আনা
-    cursor.execute("SELECT file_count, single_id_count FROM stats WHERE user_id = ?", (user_id,))
-    stats_data = cursor.fetchone()
-    
-    file_count = stats_data[0] if stats_data else 0
-    single_id_count = stats_data[1] if stats_data else 0
-
-    # সুন্দর করে সাজানো মেসেজ
-    status_msg = (
-        f"👤 **আপনার প্রোফাইল স্ট্যাটাস**\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"🆔 **ইউজার আইডি:** `{user_id}`\n"
-        f"💰 **মোট ব্যালেন্স:** {balance} BDT\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"📁 **মোট ফাইল পাঠিয়েছেন:** {file_count} টি\n"
-        f"🆔 **সিঙ্গেল আইডি পাঠিয়েছেন:** {single_id_count} টি\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"সঠিকভাবে কাজ করুন এবং বেশি আয় করুন! 🔥"
-    )
-    
-    await message.answer(status_msg, parse_mode="Markdown")
-    # এডমিন প্যানেল থেকে ইউজারের মেসেজ দেখার কমান্ড
-@dp.message_handler(commands=['userlogs'], user_id=ADMIN_ID)
-async def show_user_status(message: types.Message):
-    user_id = message.from_user.id
-    
     # ১. ডাটাবেস থেকে মেইন ব্যালেন্স এবং পেন্ডিং ব্যালেন্স দুটিই আনা
     cursor.execute("SELECT balance, pending_balance FROM users WHERE user_id = ?", (user_id,))
     user_data = cursor.fetchone()
@@ -1111,6 +1080,30 @@ async def show_user_status(message: types.Message):
     
     await message.answer(status_msg, parse_mode="Markdown")
     
+    # এডমিন প্যানেল থেকে ইউজারের মেসেজ দেখার কমান্ড
+@dp.message_handler(commands=['userlogs'], user_id=ADMIN_ID)
+async def get_user_history(message: types.Message):
+    args = message.get_args().split()
+    if not args:
+        return await message.answer("⚠️ সঠিক নিয়ম: `/userlogs USER_ID` \nউদাহরণ: `/userlogs 12345678`")
+    
+    target_id = args[0]
+    
+    # শেষ ২০টি মেসেজ সিরিয়ালি আনা হচ্ছে
+    cursor.execute("SELECT message_text, date FROM user_history WHERE user_id = ? ORDER BY date DESC LIMIT 20", (target_id,))
+    rows = cursor.fetchall()
+
+    if rows:
+        history_text = f"📜 **ইউজার আইডি `{target_id}` এর শেষ ২০টি মেসেজ:**\n"
+        history_text += "━━━━━━━━━━━━━━━━━━\n"
+        
+        for i, row in enumerate(rows, 1):
+            history_text += f"{i}. 🕒 {row[1]}\n📝 {row[0]}\n\n"
+        
+        history_text += "━━━━━━━━━━━━━━━━━━"
+        await message.answer(history_text)
+    else:
+        await message.answer(f"❌ আইডি `{target_id}` এর কোনো মেসেজ রেকর্ড পাওয়া যায়নি।")
 # অ্যাডমিন এই কমান্ড দিলে সব ইউজারের ইউজারনেম ও আইডি দেখতে পাবেন
 @dp.message_handler(commands=['allusers'], user_id=ADMIN_ID)
 async def get_all_users(message: types.Message):
