@@ -1887,28 +1887,37 @@ async def toggle_work(message: types.Message):
     else:
         await message.answer("❌ ভুল কাজের নাম! সঠিক নাম: `mother`, `2fa`, বা `cookies`।")
 @dp.message_handler(commands=['admin'], user_id=ADMIN_ID)
-async def get_all_commands(message: types.Message):
-    all_commands = []
+#এডিট করার অ্যাডমিন কমান্ড ---
+# ব্যবহার নিয়ম: /edit_pending [user_id] [amount]
+# উদাহরণ: /edit_pending 12345678 500
+@dp.message_handler(commands=['edit_pending'], user_id=ADMIN_ID)
+async def edit_pending_balance(message: types.Message):
+    args = message.get_args().split()
     
-    # বটের ডেসপ্যাচার থেকে সব রেজিস্টার্ড হ্যান্ডলার চেক করা হচ্ছে
-    for handler in dp.message_handlers.handlers:
-        # হ্যান্ডলারের ফিল্টার থেকে কমান্ড খুঁজে বের করা
-        if hasattr(handler, 'filters'):
-            for f in handler.filters:
-                # aiogram এর CommandFilter চেক করা
-                if hasattr(f, 'commands') and f.commands:
-                    for cmd in f.commands:
-                        if f"/{cmd}" not in all_commands:
-                            all_commands.append(f"/{cmd}")
+    if len(args) < 2:
+        return await message.answer("❌ ভুল ফরম্যাট! এভাবে লিখুন:\n`/edit_pending [ইউজার_আইডি] [টাকার_পরিমাণ]`", parse_mode="Markdown")
 
-    if all_commands:
-        # কমান্ডগুলো সাজিয়ে একটি মেসেজে পাঠানো
-        response = "🤖 **আপনার বটের সকল কমান্ডের লিস্ট:**\n\n"
-        response += "\n".join(all_commands)
-        await message.answer(response)
+    target_user_id = args[0]
+    try:
+        new_pending_amount = float(args[1])
+    except ValueError:
+        return await message.answer("❌ টাকার পরিমাণ অবশ্যই সংখ্যা হতে হবে।")
+
+    # ডাটাবেসে আপডেট করা
+    cursor.execute("UPDATE users SET pending_balance = ? WHERE user_id = ?", (new_pending_amount, target_user_id))
+    db.commit()
+
+    if cursor.rowcount > 0:
+        await message.answer(f"✅ ইউজার `{target_user_id}` এর পেন্ডিং ব্যালেন্স আপডেট করে `{new_pending_amount}` BDT করা হয়েছে।", parse_mode="Markdown")
+        
+        # ইউজারকে নোটিফিকেশন পাঠানো (অপশনাল)
+        try:
+            await bot.send_message(target_user_id, f"🔔 আপনার পেন্ডিং ব্যালেন্স আপডেট করা হয়েছে। নতুন পেন্ডিং ব্যালেন্স: {new_pending_amount} BDT")
+        except:
+            pass
     else:
-        await message.answer("কোনো কমান্ড খুঁজে পাওয়া যায়নি।")
-                           
+        await message.answer("❌ এই ইউজার আইডিটি ডাটাবেসে পাওয়া যায়নি।")
+
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
