@@ -1049,22 +1049,27 @@ async def show_only_rules(message: types.Message):
 async def show_user_status(message: types.Message):
     user_id = message.from_user.id
     
-    # ১. ডাটাবেস থেকে মেইন ব্যালেন্স এবং পেন্ডিং ব্যালেন্স দুটিই আনা
-    cursor.execute("SELECT balance, pending_balance FROM users WHERE user_id = ?", (user_id,))
+    # ১. ডাটাবেস থেকে ব্যালেন্স এবং সব পেমেন্ট মেথড একসাথে আনা
+    cursor.execute("""SELECT balance, pending_balance, bkash_num, nagad_num, 
+                      rocket_num, binance_id, recharge_num 
+                      FROM users WHERE user_id = ?""", (user_id,))
     user_data = cursor.fetchone()
     
-    # ডাটা সেট করা (যদি ডাটা না থাকে তবে ০ ধরা হবে)
-    balance = user_data[0] if user_data else 0
-    pending_balance = user_data[1] if user_data else 0
+    # ডাটা সেট করা (যদি ইউজার না থাকে তবে ডিফল্ট মান)
+    if user_data:
+        balance, pending_balance, bkash, nagad, rocket, binance, recharge = user_data
+    else:
+        balance = pending_balance = 0
+        bkash = nagad = rocket = binance = recharge = None
 
-    # স্ট্যাটাস টেবিল থেকে ফাইল এবং সিঙ্গেল আইডির সংখ্যা আনা
+    # স্ট্যাটাস টেবিল থেকে ফাইল এবং আইডি সংখ্যা আনা
     cursor.execute("SELECT file_count, single_id_count FROM stats WHERE user_id = ?", (user_id,))
     stats_data = cursor.fetchone()
     
     file_count = stats_data[0] if stats_data else 0
     single_id_count = stats_data[1] if stats_data else 0
 
-    # ২. সুন্দর করে সাজানো মেসেজ (পেন্ডিং ব্যালেন্সের লাইনসহ)
+    # ২. মেসেজ ফরম্যাট (পেমেন্ট মেথডসহ)
     status_msg = (
         f"👤 **আপনার প্রোফাইল স্ট্যাটাস**\n"
         f"━━━━━━━━━━━━━━━━━━\n"
@@ -1072,14 +1077,21 @@ async def show_user_status(message: types.Message):
         f"💰 **মেইন ব্যালেন্স:** {balance} BDT\n"
         f"⏳ **পেন্ডিং ব্যালেন্স:** {pending_balance} BDT\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"📁 **মোট ফাইল পাঠিয়েছেন:** {file_count} টি\n"
-        f"🆔 **সিঙ্গেল আইডি পাঠিয়েছেন:** {single_id_count} টি\n"
+        f"📁 **মোট ফাইল:** {file_count} টি\n"
+        f"🆔 **সিঙ্গেল আইডি:** {single_id_count} টি\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"💳 **সেভ করা পেমেন্ট মেথড:**\n"
+        f"📱 রিচার্জ: `{recharge if recharge else 'সেট নেই'}`\n"
+        f"🟢 বিকাশ: `{bkash if bkash else 'সেট নেই'}`\n"
+        f"🟠 নগদ: `{nagad if nagad else 'সেট নেই'}`\n"
+        f"💜 রকেট: `{rocket if rocket else 'সেট নেই'}`\n"
+        f"🟡 বিন্যান্স: `{binance if binance else 'সেট নেই'}`\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"পেন্ডিং ব্যালেন্স এডমিন চেক করে মেইন ব্যালেন্সে দিয়ে দিবে। 🔥"
     )
     
     await message.answer(status_msg, parse_mode="Markdown")
-    
+                    
     # এডমিন প্যানেল থেকে ইউজারের মেসেজ দেখার কমান্ড
 @dp.message_handler(commands=['userlogs'], user_id=ADMIN_ID)
 async def get_user_history(message: types.Message):
