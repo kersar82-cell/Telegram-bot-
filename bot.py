@@ -19,6 +19,11 @@ CHANNEL_ID = -1003869471032  # আপনার দেওয়া আইডি
 CHANNEL_LINK = "https://t.me/instafb_hub" # আপনার গ্রুপের লিঙ্ক
 # এটি বটের যেকোনো জায়গায় বসাতে পারেন (ফাংশনের বাইরে)
 WITHDRAW_ENABLED = True 
+# কাজগুলো অন/অফ করার জন্য ভেরিয়েবল
+IG_MOTHER_ENABLED = True
+IG_2FA_ENABLED = True
+IG_COOKIES_ENABLED = True
+
 # রেফারেল থেকে মেইন ব্যালেন্স এড করার সুইচ
 REFER_ADD_ENABLED = True
 app = Flask('')
@@ -165,7 +170,16 @@ async def check_joined(user_id):
 @dp.message_handler(commands=['start'], state="*")
 async def start(message: types.Message, state: FSMContext):
     await state.finish()
+       # বাটন অনুযায়ী চেক করা কাজ চালু আছে কি না
+    if message.text == "IG Mother Account" and not IG_MOTHER_ENABLED:
+        return await message.answer("⚠️ দুঃখিত, বর্তমানে IG Mother Account কাজ সাময়িকভাবে বন্ধ আছে।")
+    
+    if message.text == "IG 2fa" and not IG_2FA_ENABLED:
+        return await message.answer("⚠️ দুঃখিত, বর্তমানে IG 2fa কাজ সাময়িকভাবে বন্ধ আছে।")
         
+    if message.text == "IG Cookies" and not IG_COOKIES_ENABLED:
+        return await message.answer("⚠️ দুঃখিত, বর্তমানে IG Cookies কাজ সাময়িকভাবে বন্ধ আছে।")
+    
     user_id = message.from_user.id
             # গ্রুপে জয়েন আছে কি না চেক
     is_joined = await check_joined(user_id)
