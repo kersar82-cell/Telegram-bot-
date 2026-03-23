@@ -19,6 +19,8 @@ CHANNEL_ID = -1003869471032  # আপনার দেওয়া আইডি
 CHANNEL_LINK = "https://t.me/instafb_hub" # আপনার গ্রুপের লিঙ্ক
 # এটি বটের যেকোনো জায়গায় বসাতে পারেন (ফাংশনের বাইরে)
 WITHDRAW_ENABLED = True 
+# রেফারেল থেকে মেইন ব্যালেন্স এড করার সুইচ
+REFER_ADD_ENABLED = True
 app = Flask('')
 @app.route('/')
 def home(): return "Bot is Online!"
@@ -342,7 +344,7 @@ async def get_2fa(message: types.Message, state: FSMContext):
     elif category == "IG Mother Account":
         amount_to_add = 7
     elif category == "IG 2fa":
-        amount_to_add = 2.30
+        amount_to_add = 2.50
 
     # শুধুমাত্র সিঙ্গেল আইডি জমা দিলে ব্যালেন্স আপডেট হবে
     if amount_to_add > 0:
@@ -390,7 +392,7 @@ async def handle_file(message: types.Message, state: FSMContext):
 async def withdraw_main_menu(message: types.Message):
         # শুধু এই অংশটুকু যোগ করবেন
     if not WITHDRAW_ENABLED:
-        return await message.answer("⚠️ বর্তমানে পেমেন্ট সার্ভার রক্ষণাবেক্ষণের জন্য উইথড্র সাময়িকভাবে বন্ধ আছে।\n🔋আজকের রিপোর্ট আসলে তখন আমাদের গ্রুপে জানিয়ে দেওয়া হবে।তখন আপনারা উইথড্র করতে পারবেন।/n 💳 Withdraw Option খোলার সময়~~~~~~~\n⌛⏰6.pm-12pm")
+        return await message.answer("⚠️ বর্তমানে পেমেন্ট সার্ভার রক্ষণাবেক্ষণের জন্য উইথড্র সাময়িকভাবে বন্ধ আছে।\n🔋আজকের রিপোর্ট আসলে তখন আমাদের গ্রুপে জানিয়ে দেওয়া হবে।\nতখন আপনারা উইথড্র করতে পারবেন।\n 💳 Withdraw Option খোলার সময়~~~~~~~\n⌛⏰6.pm-12pm")
     user_id = message.from_user.id
     
     # ইনলাইন কিবোর্ড তৈরি
@@ -1405,6 +1407,9 @@ async def referral_menu(message: types.Message):
 # --- ১. ইউজার যখন বাটনে ক্লিক করবে ---
 @dp.callback_query_handler(text="transfer_ref_request")
 async def ask_transfer_amount(call: types.CallbackQuery, state: FSMContext):
+       # --- নতুন অংশ: সিস্টেম চেক ---
+    if not REFER_TRANSFER_ENABLED:
+        return await call.answer("⚠️ বর্তমানে রেফার ব্যালেন্স ট্রান্সফার অপশনটি সাময়িকভাবে বন্ধ আছে।\n 🔊⏰খোলার সময় রাত ছয়টা থেকে বারোটা পর্যন্ত", show_alert=True)
     user_id = call.from_user.id
     
     # ডাটাবেস থেকে ইউজারের রেফার ব্যালেন্স চেক করা
@@ -1803,7 +1808,21 @@ async def toggle_withdraw(message: types.Message):
     else:
         status = "চালু" if WITHDRAW_ENABLED else "বন্ধ"
         await message.answer(f"বর্তমান অবস্থা: {status}\n\nবন্ধ করতে লিখুন: `/withdraw_status off` \nচালু করতে লিখুন: `/withdraw_status on`", parse_mode="Markdown")
-        
+@dp.message_handler(commands=['refer_system'], user_id=ADMIN_ID)
+async def toggle_refer_system(message: types.Message):
+    global REFER_TRANSFER_ENABLED
+    command = message.get_args().lower()
+    
+    if command == "on":
+        REFER_TRANSFER_ENABLED = True
+        await message.answer("✅ রেফার ট্রান্সফার সিস্টেম চালু করা হয়েছে।")
+    elif command == "off":
+        REFER_TRANSFER_ENABLED = False
+        await message.answer("❌ রেফার ট্রান্সফার সিস্টেম বন্ধ করা হয়েছে।")
+    else:
+        status = "চালু" if REFER_TRANSFER_ENABLED else "বন্ধ"
+        await message.answer(f"বর্তমান অবস্থা: {status}\n\nবন্ধ করতে: `/refer_system off` \nচালু করতে: `/refer_system on`")
+    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
