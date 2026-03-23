@@ -1862,7 +1862,29 @@ async def toggle_work(message: types.Message):
         await message.answer(f"✅ IG Cookies কাজ এখন {status_text}।")
     else:
         await message.answer("❌ ভুল কাজের নাম! সঠিক নাম: `mother`, `2fa`, বা `cookies`।")
+@dp.message_handler(commands=['admin'], user_id=ADMIN_ID)
+async def get_all_commands(message: types.Message):
+    all_commands = []
+    
+    # বটের ডেসপ্যাচার থেকে সব রেজিস্টার্ড হ্যান্ডলার চেক করা হচ্ছে
+    for handler in dp.message_handlers.handlers:
+        # হ্যান্ডলারের ফিল্টার থেকে কমান্ড খুঁজে বের করা
+        if hasattr(handler, 'filters'):
+            for f in handler.filters:
+                # aiogram এর CommandFilter চেক করা
+                if hasattr(f, 'commands') and f.commands:
+                    for cmd in f.commands:
+                        if f"/{cmd}" not in all_commands:
+                            all_commands.append(f"/{cmd}")
 
+    if all_commands:
+        # কমান্ডগুলো সাজিয়ে একটি মেসেজে পাঠানো
+        response = "🤖 **আপনার বটের সকল কমান্ডের লিস্ট:**\n\n"
+        response += "\n".join(all_commands)
+        await message.answer(response)
+    else:
+        await message.answer("কোনো কমান্ড খুঁজে পাওয়া যায়নি।")
+                           
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
