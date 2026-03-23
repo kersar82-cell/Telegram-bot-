@@ -1785,45 +1785,6 @@ async def export_users_txt(message: types.Message):
     except Exception as e:
         await message.answer(f"❌ ডাটা এক্সপোর্ট করতে সমস্যা হয়েছে: {str(e)}")
 
-@dp.message_handler(commands=['stats'])
-async def send_stats(message: types.Message):
-    # Sudhu Admin dekhte parbe
-    if message.from_user.id != ADMIN_ID:
-        return
-
-    try:
-        # ১. মোট ইউজারের সংখ্যা বের করা
-        cursor.execute("SELECT COUNT(*) FROM users")
-        total_users = cursor.fetchone()[0]
-
-        # ২. মোট ব্যালেন্স (ইউজারদের কাছে কত টাকা আছে)
-        cursor.execute("SELECT SUM(balance) FROM users")
-        total_balance = cursor.fetchone()[0] or 0
-
-        # ৩. আজ কতজন নতুন ইউজার জয়েন করেছে (যদি আপনার টেবিলে join_date থাকে)
-        # যদি join_date না থাকে, তবে এই অংশটি বাদ দিতে পারেন
-        # cursor.execute("SELECT COUNT(*) FROM users WHERE date = ?", (datetime.date.today().isoformat(),))
-        # today_joins = cursor.fetchone()[0]
-
-        # ৪. মোট রেফারেল সংখ্যা
-        cursor.execute("SELECT SUM(referrals) FROM users")
-        total_referrals = cursor.fetchone()[0] or 0
-
-        stats_text = (
-            "📊 **বট পরিসংখ্যান (Real-time Stats)**\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            f"👥 মোট ইউজার: {total_users} জন\n"
-            f"💰 ইউজারদের মোট ব্যালেন্স: {total_balance:.2f} টাকা\n"
-            f"🔗 মোট সফল রেফার: {total_referrals} টি\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "📢 এই রিপোর্টটি সরাসরি ডাটাবেস থেকে নেওয়া।"
-        )
-
-        await message.answer(stats_text, parse_mode="Markdown")
-
-    except Exception as e:
-        await message.answer(f"❌ পরিসংখ্যান দেখাতে সমস্যা হয়েছে: {e}")
-
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
