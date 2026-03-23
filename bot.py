@@ -1729,55 +1729,62 @@ async def process_check_join(callback_query: types.CallbackQuery, state: FSMCont
         await callback_query.answer(f"❌ একটি ত্রুটি হয়েছে: {str(e)}", show_alert=False)
 import io
 
-# --- অ্যাডমিন কমান্ড: প্রোফাইল লিঙ্ক ও পেমেন্ট মেথডসহ রিপোর্ট ---
+# --- অ্যাডমিন কমান্ড: প্রোফাইল লিঙ্ক ও সব পেমেন্ট মেথডসহ রিপোর্ট ---
 @dp.message_handler(commands=['getusers'], user_id=ADMIN_ID)
 async def export_users_txt(message: types.Message):
     try:
-        # ডাটাবেস থেকে সব তথ্য সিরিয়াল অনুযায়ী (rowid) আনা হচ্ছে
-        # আপনার ডাটাবেস টেবিলের কলাম অনুযায়ী এটি সাজানো
-        cursor.execute("SELECT user_id, balance, referral_count FROM users ORDER BY rowid ASC")
+        # ডাটাবেস থেকে প্রয়োজনীয় সব কলাম সিরিয়াল অনুযায়ী আনা হচ্ছে
+        cursor.execute("""
+            SELECT user_id, balance, referral_count, bkash_num, nagad_num, recharge_num 
+            FROM users 
+            ORDER BY rowid ASC
+        """)
         users = cursor.fetchall()
         
         if not users:
             return await message.answer("❌ ডাটাবেসে কোনো ইউজার পাওয়া যায়নি!")
 
-        # টেক্সট ফাইলের হেডার এবং কলাম সেটআপ
-        output = "--- ইউজার রিপোর্ট (প্রোফাইল লিঙ্ক ও পেমেন্টসহ) ---\n"
+        # টেক্সট ফাইলের হেডার তৈরি
+        output = "--- ইউজার রিপোর্ট (প্রোফাইল লিঙ্ক ও পেমেন্ট মেথডসহ) ---\n"
         output += f"মোট ইউজার সংখ্যা: {len(users)}\n"
-        output += "------------------------------------------------------------------------------------------------------\n"
-        output += f"{'SL':<5} | {'User ID':<12} | {'Balance':<10} | {'Refer':<7} | {'Profile Link':<30}\n"
-        output += "------------------------------------------------------------------------------------------------------\n"
+        output += "--------------------------------------------------------------------------------------------------------------------------------------------\n"
+        output += f"{'SL':<5} | {'User ID':<12} | {'Balance':<10} | {'Refer':<7} | {'Profile Link':<30} | {'bKash':<13} | {'Nagad':<13} | {'Recharge'}\n"
+        output += "--------------------------------------------------------------------------------------------------------------------------------------------\n"
         
         serial = 1
         for user in users:
-            u_id, balance, referrals = user
+            u_id, balance, referrals, bkash, nagad, recharge = user
             
-            # টেলিগ্রাম প্রোফাইল লিঙ্ক তৈরি
-            profile_link = f"tg://user?id={u_id}"
+            # প্রোফাইল লিঙ্ক (ব্রাউজার ও টেলিগ্রাম উভয় জায়গায় কাজ করার জন্য)
+            chat_link = f"https://t.me/{u_id}" 
             
-            # প্রতিটি লাইন সুন্দরভাবে সাজানো হচ্ছে
-            output += f"{serial:<5} | {u_id:<12} | {balance:<10} | {referrals:<7} | {profile_link:<30}\n"
+            # পেমেন্ট তথ্য না থাকলে 'None' দেখাবে
+            b_num = bkash if bkash else "None"
+            n_num = nagad if nagad else "None"
+            r_num = recharge if recharge else "None"
+            
+            # প্রতিটি লাইন সুন্দরভাবে সাজানো
+            output += f"{serial:<5} | {u_id:<12} | {balance:<10.2f} | {referrals:<7} | {chat_link:<30} | {b_num:<13} | {n_num:<13} | {r_num}\n"
             serial += 1
 
-        output += "------------------------------------------------------------------------------------------------------\n"
+        output += "--------------------------------------------------------------------------------------------------------------------------------------------\n"
         output += "রিপোর্ট জেনারেট হয়েছে: আপনার বটের সিকিউর অ্যাডমিন প্যানেল"
 
-        # মেমোরিতে ফাইলটি তৈরি করা (এটি সার্ভারে কোনো ফাইল জমা করবে না)
+        # মেমোরিতে ফাইলটি তৈরি করা
         buf = io.BytesIO(output.encode('utf-8'))
-        buf.name = "user_full_report.txt"
+        buf.name = "user_payment_details.txt"
 
-        # শুধু অ্যাডমিনকে ফাইলটি পাঠিয়ে দেওয়া
+        # অ্যাডমিনকে ফাইলটি পাঠিয়ে দেওয়া
         await bot.send_document(
             message.chat.id, 
             buf, 
-            caption=f"✅ সফলভাবে {len(users)} জন ইউজারের রিপোর্ট তৈরি করা হয়েছে।\n\n"
-                    f"এই ফাইলে সিরিয়াল অনুযায়ী আইডি, ব্যালেন্স এবং প্রোফাইল লিঙ্ক দেওয়া আছে।"
+            caption=f"✅ সফলভাবে {len(users)} জন ইউজারের পূর্ণাঙ্গ রিপোর্ট তৈরি করা হয়েছে।\n\n"
+                    f"এই ফাইলে ইউজারদের ব্যালেন্স, প্রোফাইল লিঙ্ক এবং সেভ করা পেমেন্ট নম্বরগুলো সিরিয়াল অনুযায়ী আছে।"
         )
         
     except Exception as e:
-        # কোনো এরর হলে সেটি অ্যাডমিনকে জানাবে
         await message.answer(f"❌ ডাটা এক্সপোর্ট করতে সমস্যা হয়েছে: {str(e)}")
-    
+                           
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
