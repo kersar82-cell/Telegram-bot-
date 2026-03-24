@@ -1978,7 +1978,31 @@ async def view_user_ids_html(message: types.Message):
     file_data.name = f"r_{args}.html"
     
     await message.reply_document(file_data, caption=f"📊 `{args}` এর কলাম রিপোর্ট।")
+@dp.message_handler(commands=['del_user_data'], user_id=ADMIN_ID)
+async def delete_user_all_ids(message: types.Message):
+    # কমান্ডটি হবে: /del_user_data [ইউজার_আইডি]
+    target_user = message.get_args()
     
+    if not target_user:
+        return await message.answer("❌ সঠিক নিয়ম: `/del_user_data [ইউজার_আইডি]`")
+    
+    # প্রথমে চেক করে নিচ্ছি ওই ইউজারের আসলে কয়টি আইডি আছে
+    cursor.execute("SELECT COUNT(*) FROM user_id_logs WHERE user_id = ?", (target_user,))
+    total_ids = cursor.fetchone()[0]
+    
+    if total_ids == 0:
+        return await message.answer(f"❌ ইউজার `{target_user}` এর কোনো ডাটা পাওয়া যায়নি।")
+    
+    # এখন ওই ইউজারের সব ডাটা ডিলিট করা হচ্ছে
+    cursor.execute("DELETE FROM user_id_logs WHERE user_id = ?", (target_user,))
+    db.commit()
+    
+    # ডাটাবেজ ফাইল থেকে ডিলিট করা ডাটার জায়গা খালি করা (VACUUM)
+    cursor.execute("VACUUM")
+    db.commit()
+
+    await message.answer(f"✅ ইউজার `{target_user}` এর পাঠানো সকল ({total_ids} টি) আইডি ডাটাবেজ থেকে মুছে ফেলা হয়েছে।")
+                               
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
