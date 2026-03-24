@@ -1925,53 +1925,60 @@ import io
 @dp.message_handler(commands=['view_ids'], user_id=ADMIN_ID)
 async def view_user_ids_html(message: types.Message):
     args = message.get_args()
-    if not args: return await message.answer("❌ `/view_ids [ID]`")
+    if not args: return await message.answer("❌ সঠিক নিয়ম: `/view_ids [ইউজার_আইডি]`")
 
     cursor.execute("SELECT category, u_id, u_pass, two_fa, date_time FROM user_id_logs WHERE user_id = ? ORDER BY date_time ASC", (args,))
     rows = cursor.fetchall()
-    if not rows: return await message.answer("❌ ডাটা নেই")
+    if not rows: return await message.answer(f"❌ ডাটা পাওয়া যায়নি।")
 
-    # CSS এবং JS একদম ছোট করা হয়েছে
-    h = f"""<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+    # CSS এবং JS মিনিমাইজ করা হয়েছে ফাইল ছোট করার জন্য
+    html_start = f"""<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
     <style>
-        body{{font:12px sans-serif;background:#eee;padding:5px}}
-        .b{{background:#fff;margin-bottom:15px;border:1px solid #ccc;border-radius:5px;overflow:hidden}}
-        .t{{background:#333;color:#fff;padding:8px;font-weight:700}}
-        .g{{display:flex;gap:4px;padding:5px;background:#ddd}}
-        button{{background:#f90;color:#fff;border:0;padding:5px 8px;border-radius:3px;cursor:pointer;font-size:10px}}
-        table{{width:100%;border-collapse:collapse;background:#fff}}
-        th,td{{border:1px solid #eee;padding:6px;text-align:left}}
-        th{{background:#f2f2f2}}
-        #s{{visibility:hidden;background:#4CAF50;color:#fff;padding:8px;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);border-radius:5px}}
-        .show{{visibility:visible!important}}
+        body{{font-family:sans-serif;background:#f4f4f9;padding:5px}}
+        .b{{background:#fff;border-radius:8px;box-shadow:0 2px 5px #0002;margin-bottom:20px;overflow:auto;border:1px solid #ddd}}
+        .t{{background:#333;color:#fff;padding:10px;font-weight:700}}
+        .g{{display:flex;gap:5px;padding:8px;background:#eee}}
+        .btn{{background:#ff9800;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:700}}
+        table{{width:100%;border-collapse:collapse;min-width:500px}}
+        th,td{{border:1px solid #eee;padding:8px;text-align:left;font-size:12px}}
+        th{{background:#f8f8f8}}
+        .toast{{visibility:hidden;background:#4CAF50;color:#fff;text-align:center;padding:8px;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);border-radius:5px}}
+        .show{{visibility:visible;animation:f 2s}}@keyframes f{{0%,100%{{opacity:0}}20%,80%{{opacity:1}}}}
     </style>
     <script>
         function cp(c){{
-            let d="";for(let e of document.getElementsByClassName(c))d+=e.innerText+"\\n";
-            const x=document.createElement('textarea');x.value=d.trim();document.body.appendChild(x);x.select();document.execCommand('copy');document.body.removeChild(x);
-            const s=document.getElementById("s");s.className="show";setTimeout(()=>{{s.className=""}},1500);
+            let d="";const el=document.getElementsByClassName(c);
+            for(let e of el)d+=e.innerText+"\\n";
+            const t=document.createElement('textarea');t.value=d.trim();document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);
+            const x=document.getElementById("s");x.className="toast show";setTimeout(()=>{{x.className="toast"}},2000);
         }}
-    </script></head><body><h3>ID: {args}</h3><div id="s">কপি হয়েছে! ✅</div>"""
+    </script></head><body><h3>Report: {args}</h3><div id="s" class="toast">কপি হয়েছে! ✅</div>"""
 
-    cats = {}
-    for r in rows: cats.setdefault(r[0], []).append(r)
+    cat_groups = {}
+    for r in rows:
+        cat_groups.setdefault(r[0], []).append(r)
 
-    c = ""
-    for n, items in cats.items():
-        id = "".join(filter(str.isalnum, n))
-        c += f"<div class='b'><div class='t'>{n} ({len(items)})</div><div class='g'>"
-        c += f"<button onclick=\\"cp('u-{id}')\\">User</button>"
-        c += f"<button onclick=\\"cp('p-{id}')\\">Pass</button>"
-        c += f"<button onclick=\\"cp('t-{id}')\\">2FA</button></div>"
-        c += "<table><tr><th>#</th><th>User</th><th>Pass</th><th>2FA</th><th>Time</th></tr>"
-        for i, r in enumerate(items, 1):
-            c += f"<tr><td>{i}</td><td class='u-{id}'>{r[1]}</td><td class='p-{id}'>{r[2]}</td><td class='t-{id}'>{r[3]}</td><td style='color:#999'>{r[4]}</td></tr>"
-        c += "</table></div>"
+    content = ""
+    for cat, items in cat_groups.items():
+        s_cat = "".join(filter(str.isalnum, cat))
+        content += f"""<div class='b'><div class='t'>{cat} ({len(items)})</div>
+        <div class='g'>
+            <button class='btn' onclick="cp('u-{s_cat}')">Usernames</button>
+            <button class='btn' onclick="cp('p-{s_cat}')">Passwords</button>
+            <button class='btn' onclick="cp('t-{s_cat}')">2FA</button>
+        </div>
+        <table><tr><th>No</th><th>User</th><th>Pass</th><th>2FA</th><th>Time</th></tr>"""
+        
+        for i, item in enumerate(items, 1):
+            content += f"<tr><td>{i}</td><td class='u-{s_cat}'>{item[1]}</td><td class='p-{s_cat}'>{item[2]}</td><td class='t-{s_cat}'>{item[3]}</td><td style='color:#888'>{item[4]}</td></tr>"
+        content += "</table></div>"
 
-    f = io.BytesIO((h + c + "</body></html>").encode('utf-8'))
-    f.name = f"r_{args}.html"
-    await message.reply_document(f, caption=f"📊 `{args}` এর রিপোর্ট।")
-
+    full_html = html_start + content + "</body></html>"
+    file_data = io.BytesIO(full_html.encode('utf-8'))
+    file_data.name = f"r_{args}.html"
+    
+    await message.reply_document(file_data, caption=f"📊 `{args}` এর কলাম রিপোর্ট।")
+    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
