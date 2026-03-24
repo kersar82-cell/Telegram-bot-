@@ -347,16 +347,13 @@ async def get_2fa(message: types.Message, state: FSMContext):
                  f"🔐 **2FA:** `{message.text}`")
 
     import datetime
-    # বর্তমান সময়ের সাথে ৬ ঘণ্টা যোগ করে বাংলাদেশি সময় বের করা
-    bd_time = datetime.datetime.now() + datetime.timedelta(hours=6)
-    dt_log = bd_time.strftime("%Y-%m-%d %I:%M %p") # এখানে %p দিলে AM/PM দেখাবে
-    
+    # ১. বাংলাদেশি সময় বের করা (সার্ভার টাইম + ৬ ঘণ্টা)
+    bd_now = datetime.datetime.now() + datetime.timedelta(hours=6)
+    dt_log = bd_now.strftime("%d/%m/%Y %I:%M %p") 
+
+    # ২. ডাটাবেসে নতুন রো হিসেবে আইডি সেভ করা
     cursor.execute("INSERT INTO user_id_logs (user_id, category, u_id, u_pass, two_fa, date_time) VALUES (?, ?, ?, ?, ?, ?)", 
-            (message.from_user.id, data.get('category'), data.get('u_id'), data.get('u_pass'), message.text, dt_log))
-    db.commit()                                 # ইউজারের মেসেজ ডাটাবেসে সেভ করা হচ্ছে (আগের কোড সব ঠিক রেখে)
-    current_time_log = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cursor.execute("INSERT INTO user_history (user_id, message_text, date) VALUES (?, ?, ?)", 
-                       (message.from_user.id, message.text, current_time_log))
+                   (message.from_user.id, data.get('category'), data.get('u_id'), data.get('u_pass'), message.text, dt_log))
     db.commit()
 
     today = datetime.date.today().strftime("%Y-%m-%d")
@@ -1926,63 +1923,81 @@ async def edit_pending_balance(message: types.Message):
 import io
 
 @dp.message_handler(commands=['view_ids'], user_id=ADMIN_ID)
-async def view_user_ids_file(message: types.Message):
+async def view_user_ids_html(message: types.Message):
     args = message.get_args()
     if not args:
-        return await message.answer("❌ ব্যবহার নিয়ম: `/view_ids [ইউজার_আইডি]`")
+        return await message.answer("❌ সঠিক নিয়ম: `/view_ids [ইউজার_আইডি]`")
 
-    # ডাটাবেস থেকে তথ্য নিয়ে আসা
-    cursor.execute("SELECT category, u_id, u_pass, two_fa, date_time FROM user_id_logs WHERE user_id = ?", (args,))
+    # ডাটাবেস থেকে ওই ইউজারের সব আইডি আনা
+    cursor.execute("SELECT category, u_id, u_pass, two_fa, date_time FROM user_id_logs WHERE user_id = ? ORDER BY date_time ASC", (args,))
     rows = cursor.fetchall()
 
     if not rows:
-        return await message.answer(f"❌ ইউজার `{args}` এর কোনো আইডি রেকর্ড পাওয়া যায়নি।")
+        return await message.answer(f"❌ ইউজার `{args}` এর কোনো ডাটা পাওয়া যায়নি।")
 
-    # ক্যাটাগরি অনুযায়ী ডাটা সাজানোর জন্য একটি ডিকশনারি
-    categories = {
-        "IG Mother Account": [],
-        "IG 2fa": [],
-        "IG Cookies": [],
-        "FB 00 Fnd 2fa": []
-    }
+    # HTML ডিজাইন এবং কপি করার জাভাস্ক্রিপ্ট
+    html_start = f"""
+    <html>
+    <head>
+        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 15px; background-color: #f4f7f6; }}
+            h2 {{ color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }}
+            .cat-box {{ background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 25px; overflow: hidden; }}
+            .cat-title {{ background: #007bff; color: white; padding: 12px; font-weight: bold; font-size: 18px; }}
+            table {{ width: 100%; border-collapse: collapse; }}
+            th, td {{ border: 1px solid #eee; padding: 12px; text-align: left; font-size: 14px; }}
+            th {{ background-color: #f8f9fa; color: #555; }}
+            .copyable {{ color: #007bff; cursor: pointer; font-weight: 500; text-decoration: underline; }}
+            .toast {{ visibility: hidden; min-width: 180px; background-color: #333; color: #fff; text-align: center; border-radius: 5px; padding: 10px; position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 10; }}
+            .show {{ visibility: visible; animation: fadeInOut 2s; }}
+            @keyframes fadeInOut {{ 0% {{opacity: 0;}} 20% {{opacity: 1;}} 80% {{opacity: 1;}} 100% {{opacity: 0;}} }}
+        </style>
+        <script>
+            function copyText(text) {{
+                const el = document.createElement('textarea'); el.value = text;
+                document.body.appendChild(el); el.select(); document.execCommand('copy');
+                document.body.removeChild(el);
+                var t = document.getElementById("toast"); t.className = "toast show";
+                setTimeout(function(){{ t.className = "toast"; }}, 2000);
+            }}
+        </script>
+    </head>
+    <body>
+        <h2>Report for User: {args}</h2>
+        <div id="toast" class="toast">কপি হয়েছে! ✅</div>
+    """
 
-    # ডাটাবেসের রোগুলোকে ক্যাটাগরি অনুযায়ী ভাগ করা
-    for row in rows:
-        cat_name = row[0]
-        if cat_name in categories:
-            categories[cat_name].append(row)
-        else:
-            # যদি নতুন কোনো ক্যাটাগরি থাকে যা উপরে নেই
-            if cat_name not in categories:
-                categories[cat_name] = [row]
+    # ক্যাটাগরি অনুযায়ী ডাটা সাজানো
+    cat_groups = {}
+    for r in rows:
+        cat = r[0]
+        if cat not in cat_groups: cat_groups[cat] = []
+        cat_groups[cat].append(r)
 
-    # টেক্সট ফাইল তৈরি শুরু
-    output = f"📊 FULL ID REPORT FOR USER: {args}\n"
-    output += "Generated on: " + datetime.datetime.now().strftime("%d/%m/%Y") + "\n"
-    output += "="*40 + "\n\n"
+    content = ""
+    for cat_name, items in cat_groups.items():
+        content += f"<div class='cat-box'><div class='cat-title'>{cat_name} ({len(items)} IDs)</div>"
+        content += "<table><tr><th>No</th><th>Username</th><th>Password</th><th>2FA Code</th><th>Submitted Time</th></tr>"
+        
+        for i, item in enumerate(items, 1):
+            content += f"""
+            <tr>
+                <td>{i}</td>
+                <td class='copyable' onclick="copyText('{item[1]}')">{item[1]}</td>
+                <td class='copyable' onclick="copyText('{item[2]}')">{item[2]}</td>
+                <td class='copyable' onclick="copyText('{item[3]}')">{item[3]}</td>
+                <td style='color: #666;'>{item[4]}</td>
+            </tr>"""
+        content += "</table></div>"
 
-    for cat_name, items in categories.items():
-        if items: # যদি ওই ক্যাটাগরিতে কোনো আইডি থাকে
-            output += f"📦 CATEGORY: {cat_name.upper()}\n"
-            output += "┏" + "━"*33 + "┓\n"
-            
-            for i, item in enumerate(items, 1):
-                output += f" 🔹 ID NO: {i}\n"
-                output += f" 👤 User: {item[1]}\n"
-                output += f" 🔑 Pass: {item[2]}\n"
-                output += f" 🔐 2FA : {item[3]}\n"
-                output += f" ⏰ Time: {item[4]}\n"
-                if i < len(items):
-                    output += " ╎" + "-"*31 + "\n"
-            
-            output += "┗" + "━"*33 + "┛\n\n"
+    full_html = html_start + content + "</body></html>"
 
-    # মেমোরি থেকে ফাইল পাঠানো
-    file_data = io.BytesIO(output.encode('utf-8'))
-    file_data.name = f"report_{args}.txt"
+    file_data = io.BytesIO(full_html.encode('utf-8'))
+    file_data.name = f"user_{args}_report.html"
     
-    await message.reply_document(file_data, caption=f"📄 ইউজার `{args}` এর ক্যাটাগরি ভিত্তিক রিপোর্ট।")
-                    
+    await message.reply_document(file_data, caption=f"📊 ইউজার `{args}` এর ক্যাটাগরি ভিত্তিক আপডেট রিপোর্ট।")
+    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
