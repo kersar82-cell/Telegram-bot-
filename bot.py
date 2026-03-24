@@ -1896,10 +1896,6 @@ async def toggle_work(message: types.Message):
         await message.answer(f"✅ IG Cookies কাজ এখন {status_text}।")
     else:
         await message.answer("❌ ভুল কাজের নাম! সঠিক নাম: `mother`, `2fa`, বা `cookies`।")
-@dp.message_handler(commands=['admin'], user_id=ADMIN_ID)
-#এডিট করার অ্যাডমিন কমান্ড ---
-# ব্যবহার নিয়ম: /edit_pending [user_id] [amount]
-# উদাহরণ: /edit_pending 12345678 500
 @dp.message_handler(commands=['edit_pending'], user_id=ADMIN_ID)
 async def edit_pending_balance(message: types.Message):
     args = message.get_args().split()
@@ -1933,34 +1929,60 @@ import io
 async def view_user_ids_file(message: types.Message):
     args = message.get_args()
     if not args:
-        return await message.answer("❌ সঠিক নিয়ম: `/view_ids [ইউজার_আইডি]`")
+        return await message.answer("❌ ব্যবহার নিয়ম: `/view_ids [ইউজার_আইডি]`")
 
+    # ডাটাবেস থেকে তথ্য নিয়ে আসা
     cursor.execute("SELECT category, u_id, u_pass, two_fa, date_time FROM user_id_logs WHERE user_id = ?", (args,))
     rows = cursor.fetchall()
 
     if not rows:
         return await message.answer(f"❌ ইউজার `{args}` এর কোনো আইডি রেকর্ড পাওয়া যায়নি।")
 
-    # কলামের টাইটেল বা হেডার
-    # {<সংখ্যা} দিয়ে কলামের দূরত্ব বা স্পেস নিয়ন্ত্রণ করা হয়েছে
-    header = f"{'No':<4} | {'Category':<20} | {'Username':<20} | {'Password':<15} | {'2FA':<10} | {'Time (BD)'}\n"
-    separator = "=" * 90 + "\n"
-    
-    output = f"ID SUBMISSION REPORT (BANGLADESH TIME)\n"
-    output += f"User ID: {args}\n"
-    output += separator + header + separator
+    # ক্যাটাগরি অনুযায়ী ডাটা সাজানোর জন্য একটি ডিকশনারি
+    categories = {
+        "IG Mother Account": [],
+        "IG 2fa": [],
+        "IG Cookies": [],
+        "FB 00 Fnd 2fa": []
+    }
 
-    for i, row in enumerate(rows, 1):
-        category, u_id, u_pass, two_fa, dt_time = row
-        # প্রতিটি ডাটাকে কলাম অনুযায়ী সাজানো
-        output += f"{i:<4} | {str(category):<20} | {str(u_id):<20} | {str(u_pass):<15} | {str(two_fa):<10} | {dt_time}\n"
+    # ডাটাবেসের রোগুলোকে ক্যাটাগরি অনুযায়ী ভাগ করা
+    for row in rows:
+        cat_name = row[0]
+        if cat_name in categories:
+            categories[cat_name].append(row)
+        else:
+            # যদি নতুন কোনো ক্যাটাগরি থাকে যা উপরে নেই
+            if cat_name not in categories:
+                categories[cat_name] = [row]
 
-    # টেক্সট ফাইল তৈরি
+    # টেক্সট ফাইল তৈরি শুরু
+    output = f"📊 FULL ID REPORT FOR USER: {args}\n"
+    output += "Generated on: " + datetime.datetime.now().strftime("%d/%m/%Y") + "\n"
+    output += "="*40 + "\n\n"
+
+    for cat_name, items in categories.items():
+        if items: # যদি ওই ক্যাটাগরিতে কোনো আইডি থাকে
+            output += f"📦 CATEGORY: {cat_name.upper()}\n"
+            output += "┏" + "━"*33 + "┓\n"
+            
+            for i, item in enumerate(items, 1):
+                output += f" 🔹 ID NO: {i}\n"
+                output += f" 👤 User: {item[1]}\n"
+                output += f" 🔑 Pass: {item[2]}\n"
+                output += f" 🔐 2FA : {item[3]}\n"
+                output += f" ⏰ Time: {item[4]}\n"
+                if i < len(items):
+                    output += " ╎" + "-"*31 + "\n"
+            
+            output += "┗" + "━"*33 + "┛\n\n"
+
+    # মেমোরি থেকে ফাইল পাঠানো
     file_data = io.BytesIO(output.encode('utf-8'))
     file_data.name = f"report_{args}.txt"
     
-    await message.reply_document(file_data, caption=f"📄 ইউজার `{args}` এর সকল আইডি শিট ফরম্যাটে।")
-           
+    await message.reply_document(file_data, caption=f"📄 ইউজার `{args}` এর ক্যাটাগরি ভিত্তিক রিপোর্ট।")
+                    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
