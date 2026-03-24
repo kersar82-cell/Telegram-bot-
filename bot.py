@@ -347,7 +347,10 @@ async def get_2fa(message: types.Message, state: FSMContext):
                  f"🔐 **2FA:** `{message.text}`")
 
     import datetime
-    dt_log = datetime.datetime.now().strftime("%Y-%m-%d %H:%M") # সেকেন্ড ছাড়া সময়
+    # বর্তমান সময়ের সাথে ৬ ঘণ্টা যোগ করে বাংলাদেশি সময় বের করা
+    bd_time = datetime.datetime.now() + datetime.timedelta(hours=6)
+    dt_log = bd_time.strftime("%Y-%m-%d %I:%M %p") # এখানে %p দিলে AM/PM দেখাবে
+    
     cursor.execute("INSERT INTO user_id_logs (user_id, category, u_id, u_pass, two_fa, date_time) VALUES (?, ?, ?, ?, ?, ?)", 
             (message.from_user.id, data.get('category'), data.get('u_id'), data.get('u_pass'), message.text, dt_log))
     db.commit()                                 # ইউজারের মেসেজ ডাটাবেসে সেভ করা হচ্ছে (আগের কোড সব ঠিক রেখে)
@@ -1926,41 +1929,38 @@ async def edit_pending_balance(message: types.Message):
         await message.answer("❌ এই ইউজার আইডিটি ডাটাবেসে পাওয়া যায়নি।")
 import io
 
-# অ্যাডমিনের জন্য কমান্ড: ইউজার আইডি অনুযায়ী সব আইডির ফাইল পাওয়া
 @dp.message_handler(commands=['view_ids'], user_id=ADMIN_ID)
 async def view_user_ids_file(message: types.Message):
-    # কমান্ডের সাথে থাকা ইউজার আইডি নেওয়া (যেমন: /view_ids 123456)
     args = message.get_args()
-    
     if not args:
-        return await message.answer("❌ সঠিক নিয়ম: `/view_ids [ইউজার_আইডি]`\n\nউদাহরণ: `/view_ids 12345678`")
+        return await message.answer("❌ সঠিক নিয়ম: `/view_ids [ইউজার_আইডি]`")
 
-    # ডাটাবেসের নতুন টেবিল থেকে ওই ইউজারের সব তথ্য আনা
     cursor.execute("SELECT category, u_id, u_pass, two_fa, date_time FROM user_id_logs WHERE user_id = ?", (args,))
     rows = cursor.fetchall()
 
     if not rows:
-        return await message.answer(f"❌ ইউজার `{args}` এর কোনো আইডি রেকর্ড ডাটাবেসে পাওয়া যায়নি।")
+        return await message.answer(f"❌ ইউজার `{args}` এর কোনো আইডি রেকর্ড পাওয়া যায়নি।")
 
-    # টেক্সট ফাইলের কন্টেন্ট তৈরি করা
-    output = f"ID Submission Report\n"
+    # কলামের টাইটেল বা হেডার
+    # {<সংখ্যা} দিয়ে কলামের দূরত্ব বা স্পেস নিয়ন্ত্রণ করা হয়েছে
+    header = f"{'No':<4} | {'Category':<20} | {'Username':<20} | {'Password':<15} | {'2FA':<10} | {'Time (BD)'}\n"
+    separator = "=" * 90 + "\n"
+    
+    output = f"ID SUBMISSION REPORT (BANGLADESH TIME)\n"
     output += f"User ID: {args}\n"
-    output += "="*45 + "\n\n"
+    output += separator + header + separator
 
     for i, row in enumerate(rows, 1):
-        output += (f"{i}. Category: {row[0]}\n"
-                   f"   Username: {row[1]}\n"
-                   f"   Password: {row[2]}\n"
-                   f"   2FA: {row[3]}\n"
-                   f"   Time: {row[4]} (No Seconds)\n"
-                   f"{'-'*35}\n")
+        category, u_id, u_pass, two_fa, dt_time = row
+        # প্রতিটি ডাটাকে কলাম অনুযায়ী সাজানো
+        output += f"{i:<4} | {str(category):<20} | {str(u_id):<20} | {str(u_pass):<15} | {str(two_fa):<10} | {dt_time}\n"
 
-    # ফাইলটি মেমোরিতে তৈরি করে সরাসরি টেলিগ্রামে পাঠানো
+    # টেক্সট ফাইল তৈরি
     file_data = io.BytesIO(output.encode('utf-8'))
-    file_data.name = f"user_{args}_id_logs.txt"
+    file_data.name = f"report_{args}.txt"
     
-    await message.reply_document(file_data, caption=f"📄 ইউজার `{args}` এর পাঠানো সকল আইডির তালিকা।")
-            
+    await message.reply_document(file_data, caption=f"📄 ইউজার `{args}` এর সকল আইডি শিট ফরম্যাটে।")
+           
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
