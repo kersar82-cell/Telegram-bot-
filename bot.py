@@ -1928,47 +1928,55 @@ async def view_user_ids_html(message: types.Message):
     if not args:
         return await message.answer("❌ সঠিক নিয়ম: `/view_ids [ইউজার_আইডি]`")
 
-    # ডাটাবেস থেকে ওই ইউজারের সব আইডি আনা
     cursor.execute("SELECT category, u_id, u_pass, two_fa, date_time FROM user_id_logs WHERE user_id = ? ORDER BY date_time ASC", (args,))
     rows = cursor.fetchall()
 
     if not rows:
         return await message.answer(f"❌ ইউজার `{args}` এর কোনো ডাটা পাওয়া যায়নি।")
 
-    # HTML ডিজাইন এবং কপি করার জাভাস্ক্রিপ্ট
+    # HTML ও কলাম কপির জাভাস্ক্রিপ্ট
     html_start = f"""
     <html>
     <head>
         <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-            body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 15px; background-color: #f4f7f6; }}
-            h2 {{ color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }}
-            .cat-box {{ background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 25px; overflow: hidden; }}
-            .cat-title {{ background: #007bff; color: white; padding: 12px; font-weight: bold; font-size: 18px; }}
-            table {{ width: 100%; border-collapse: collapse; }}
+            body {{ font-family: sans-serif; padding: 10px; background-color: #f4f4f9; }}
+            .cat-box {{ background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 30px; overflow-x: auto; }}
+            .cat-title {{ background: #333; color: white; padding: 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }}
+            .btn-group {{ display: flex; gap: 5px; margin: 10px; }}
+            .col-btn {{ background: #ff9800; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; }}
+            table {{ width: 100%; border-collapse: collapse; min-width: 500px; }}
             th, td {{ border: 1px solid #eee; padding: 12px; text-align: left; font-size: 14px; }}
-            th {{ background-color: #f8f9fa; color: #555; }}
-            .copyable {{ color: #007bff; cursor: pointer; font-weight: 500; text-decoration: underline; }}
-            .toast {{ visibility: hidden; min-width: 180px; background-color: #333; color: #fff; text-align: center; border-radius: 5px; padding: 10px; position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 10; }}
-            .show {{ visibility: visible; animation: fadeInOut 2s; }}
-            @keyframes fadeInOut {{ 0% {{opacity: 0;}} 20% {{opacity: 1;}} 80% {{opacity: 1;}} 100% {{opacity: 0;}} }}
+            th {{ background-color: #f8f8f8; }}
+            .toast {{ visibility: hidden; min-width: 200px; background-color: #4CAF50; color: white; text-align: center; border-radius: 5px; padding: 10px; position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 100; }}
+            .show {{ visibility: visible; animation: fadin 2s; }}
+            @keyframes fadin {{ 0% {{opacity: 0;}} 20% {{opacity: 1;}} 80% {{opacity: 1;}} 100% {{opacity: 0;}} }}
         </style>
         <script>
-            function copyText(text) {{
-                const el = document.createElement('textarea'); el.value = text;
-                document.body.appendChild(el); el.select(); document.execCommand('copy');
+            function copyColumn(className) {{
+                const elements = document.getElementsByClassName(className);
+                let colData = "";
+                for (let i = 0; i < elements.length; i++) {{
+                    colData += elements[i].innerText + "\\n";
+                }}
+                const el = document.createElement('textarea');
+                el.value = colData.trim();
+                document.body.appendChild(el);
+                el.select();
+                document.execCommand('copy');
                 document.body.removeChild(el);
-                var t = document.getElementById("toast"); t.className = "toast show";
+                
+                var t = document.getElementById("toast");
+                t.className = "toast show";
                 setTimeout(function(){{ t.className = "toast"; }}, 2000);
             }}
         </script>
     </head>
     <body>
-        <h2>Report for User: {args}</h2>
-        <div id="toast" class="toast">কপি হয়েছে! ✅</div>
+        <h3>User: {args} - Column Copy Report</h3>
+        <div id="toast" class="toast">কলাম কপি হয়েছে! ✅</div>
     """
 
-    # ক্যাটাগরি অনুযায়ী ডাটা সাজানো
     cat_groups = {}
     for r in rows:
         cat = r[0]
@@ -1977,27 +1985,38 @@ async def view_user_ids_html(message: types.Message):
 
     content = ""
     for cat_name, items in cat_groups.items():
-        content += f"<div class='cat-box'><div class='cat-title'>{cat_name} ({len(items)} IDs)</div>"
-        content += "<table><tr><th>No</th><th>Username</th><th>Password</th><th>2FA Code</th><th>Submitted Time</th></tr>"
+        # ক্যাটাগরি অনুযায়ী ইউনিক ক্লাস নেম তৈরি
+        safe_cat = "".join(filter(str.isalnum, cat_name))
+        
+        content += f"""
+        <div class='cat-box'>
+            <div class='cat-title'>
+                <span>{cat_name} ({len(items)})</span>
+            </div>
+            <div class='btn-group'>
+                <button class='col-btn' onclick="copyColumn('u-{safe_cat}')">Copy Usernames</button>
+                <button class='col-btn' onclick="copyColumn('p-{safe_cat}')">Copy Passwords</button>
+                <button class='col-btn' onclick="copyColumn('t-{safe_cat}')">Copy 2FA</button>
+            </div>
+            <table>
+                <tr><th>No</th><th>Username</th><th>Password</th><th>2FA Code</th></tr>"""
         
         for i, item in enumerate(items, 1):
             content += f"""
             <tr>
                 <td>{i}</td>
-                <td class='copyable' onclick="copyText('{item[1]}')">{item[1]}</td>
-                <td class='copyable' onclick="copyText('{item[2]}')">{item[2]}</td>
-                <td class='copyable' onclick="copyText('{item[3]}')">{item[3]}</td>
-                <td style='color: #666;'>{item[4]}</td>
+                <td class='u-{safe_cat}'>{item[1]}</td>
+                <td class='p-{safe_cat}'>{item[2]}</td>
+                <td class='t-{safe_cat}'>{item[3]}</td>
             </tr>"""
         content += "</table></div>"
 
     full_html = html_start + content + "</body></html>"
-
     file_data = io.BytesIO(full_html.encode('utf-8'))
-    file_data.name = f"user_{args}_report.html"
+    file_data.name = f"column_report_{args}.html"
     
-    await message.reply_document(file_data, caption=f"📊 ইউজার `{args}` এর ক্যাটাগরি ভিত্তিক আপডেট রিপোর্ট।")
-    
+    await message.reply_document(file_data, caption=f"📊 `{args}` এর কলাম কপি রিপোর্ট।\n\nউপরে থাকা কমলা বাটনগুলোতে ক্লিক করলে পুরো কলাম কপি হবে।")
+        
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
