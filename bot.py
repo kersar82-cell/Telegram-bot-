@@ -2002,7 +2002,18 @@ async def delete_user_all_ids(message: types.Message):
     db.commit()
 
     await message.answer(f"✅ ইউজার `{target_user}` এর পাঠানো সকল ({total_ids} টি) আইডি ডাটাবেজ থেকে মুছে ফেলা হয়েছে।")
-                               
+@dp.message_handler(commands=['clear_today'], user_id=ADMIN_ID)
+async def clear_everything(message: types.Message):
+    # ১. ডাটাবেসের সব রো ডিলিট করা
+    cursor.execute("DELETE FROM user_id_logs")
+    
+    # ২. ডাটাবেস ফাইলটি রি-অর্গানাইজ করে সাইজ কমিয়ে ফেলা (খুবই জরুরি)
+    cursor.execute("VACUUM")
+    
+    db.commit()
+    
+    await message.answer("♻️ **আজকের সব ডাটা সফলভাবে মুছে ফেলা হয়েছে!**\nআপনার ডাটাবেস এখন একদম খালি এবং ফাস্ট।")
+
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
