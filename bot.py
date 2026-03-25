@@ -185,7 +185,7 @@ async def start(message: types.Message, state: FSMContext):
     is_joined = await check_joined(user_id)
     if not is_joined:
         keyboard = types.InlineKeyboardMarkup()
-        keyboard.add(types.InlineKeyboardButton("📢 আমাদের গ্রুপে জয়েন করুন", url=https://t.me/instafbhub))
+        keyboard.add(types.InlineKeyboardButton("📢 আমাদের গ্রুপে জয়েন করুন", url=CHANNEL_LINK))
         keyboard.add(types.InlineKeyboardButton("✅ জয়েন করেছি", callback_data="check_join"))
         
         return await message.answer(
