@@ -249,7 +249,6 @@ async def start(message: types.Message, state: FSMContext):
     await message.answer(welcome_text, reply_markup=inline_kb, parse_mode="Markdown")
     await message.answer("❓কী করতে চান বেছে নিন ◀️", reply_markup=main_menu())
     
-# =========================================
 # ১. এখানে নামের বানান এবং স্পেস আপনার বাটন অনুযায়ী ঠিক করা হয়েছে
 
 @dp.message_handler(lambda message: message.text == "💻INSTAGRAM WORK")
@@ -262,22 +261,24 @@ async def work_start(message: types.Message):
     
     # বাটনগুলো সাজানো
     keyboard.row("IG Mother Account", "IG 2fa")
-    keyboard.row("IG Cookies", "🔄 রিফ্রেশ") 
+    keyboard.row("IG Cookies", "🔄রিফ্রেশ") 
     
-    msg = """ 📣Nord VPN Premium 
-━━━━━━━━━━━━━━━━━━
+    msg = """Nord VPN 🫱
+🤩Mail: * 3tx0zztil1@xkxkud.com *
+Pass: * RJR83@RdFr2@ *
 
-🔶 Email ➤ gaughan9999@hotmail.co.uk
-🔑 Pass  ➤ Auders*1
+🤩Mail: * 377guy1zb4@dollicons.com *
+Pass: * RJR83@RdFr2@ *
 
-🔶 Email ➤ betzcampaign@gmail.com
-🔑 Pass  ➤ Hnhnddio1986!
-
-🔶 Email ➤ thomasvcrowl@gmail.com
-🔑 Pass  ➤ HeretiC762!!"""
+🤩Mail: * icufc65r6j@dollicons.com *
+Pass: * RJR83@RdFr2@ *
+    
+👍 যেকোনো সমস্যায়: @Dinanhaji !
+🔴 আপনার কাজের ক্যাটাগরি বেছে নিন:"""
 
     await message.answer(msg, reply_markup=keyboard, parse_mode="Markdown")
 
+                    
 # এই হ্যান্ডলারটি এখন একদম পারফেক্ট কাজ করবে
 @dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa", "IG Cookies"])
 async def ask_work_type(message: types.Message, state: FSMContext):
