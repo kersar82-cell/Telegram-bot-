@@ -260,7 +260,7 @@ async def work_start(message: types.Message):
     
     # বাটনগুলো সাজানো
     keyboard.row("IG Mother Account", "IG 2fa")
-    keyboard.row("IG Cookies", "🔄রিফ্রেশ") 
+    keyboard.row("IG Cookies", "🔄 রিফ্রেশ") 
     
     msg = """Nord VPN 🫱
 🤩Mail: * 3tx0zztil1@xkxkud.com *
@@ -381,7 +381,7 @@ async def get_2fa(message: types.Message, state: FSMContext):
     
     await bot.send_message(FILE_ADMIN_ID, admin_msg, parse_mode="Markdown")
     await state.finish()
-    await message.answer("✅ আপনার তথ্য জমা হয়েছে!\n📌 মেন মেনুতে ফিরে যেতে/start", reply_markup=main_menu())
+    await message.answer("✅ আপনার তথ্য জমা হয়েছে!", reply_markup=main_menu())
     
 # ৩. রিফ্রেশ বাটনের লজিক (state="*" যোগ করা হয়েছে যাতে যেকোনো অবস্থায় এটি কাজ করে)
 @dp.message_handler(lambda message: message.text == "🔄 রিফ্রেশ", state="*")
@@ -2013,6 +2013,34 @@ async def clear_everything(message: types.Message):
     db.commit()
     
     await message.answer("♻️ **আজকের সব ডাটা সফলভাবে মুছে ফেলা হয়েছে!**\nআপনার ডাটাবেস এখন একদম খালি এবং ফাস্ট।")
+@dp.message_handler(commands=['admin_stats'], user_id=ADMIN_ID)
+async def get_overall_stats(message: types.Message):
+    # ১. ক্যাটাগরি অনুযায়ী আইডির সংখ্যা বের করা
+    cursor.execute("SELECT category, COUNT(*) FROM user_id_logs GROUP BY category")
+    category_data = cursor.fetchall()
+    
+    # ২. বটের সকল ইউজারের মোট ব্যালেন্স বের করা
+    cursor.execute("SELECT SUM(balance) FROM users")
+    total_balance = cursor.fetchone()[0] or 0.0 # ডাটা না থাকলে ০ দেখাবে
+    
+    # ৩. মেসেজ ফরম্যাট করা
+    status_msg = "📊 **বটের সামগ্রিক পরিসংখ্যান**\n\n"
+    
+    if category_data:
+        status_msg += "📂 **ক্যাটাগরি ভিত্তিক জমা হওয়া আইডি:**\n"
+        total_ids = 0
+        for cat, count in category_data:
+            status_msg += f"• {cat}: `{count}` টি\n"
+            total_ids += count
+        status_msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+        status_msg += f"📈 মোট জমা আইডি: `{total_ids}` টি\n\n"
+    else:
+        status_msg += "❌ এখনো কোনো আইডি জমা পড়েনি।\n\n"
+        
+    status_msg += f"💰 **বটের মোট ব্যালেন্স:** `{total_balance:.2f}` টাকা\n"
+    status_msg += "*(সব ইউজারের ওয়ালেটে থাকা মোট টাকা)*"
+
+    await message.answer(status_msg, parse_mode="Markdown")
 
 if __name__ == '__main__':
     keep_alive()
