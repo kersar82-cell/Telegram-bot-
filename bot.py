@@ -185,7 +185,7 @@ async def start(message: types.Message, state: FSMContext):
     is_joined = await check_joined(user_id)
     if not is_joined:
         keyboard = types.InlineKeyboardMarkup()
-        keyboard.add(types.InlineKeyboardButton("📢 আমাদের গ্রুপে জয়েন করুন", url=CHANNEL_LINK))
+        keyboard.add(types.InlineKeyboardButton("📢 আমাদের গ্রুপে জয়েন করুন", url=https://t.me/instafbhub))
         keyboard.add(types.InlineKeyboardButton("✅ জয়েন করেছি", callback_data="check_join"))
         
         return await message.answer(
@@ -264,7 +264,7 @@ async def work_start(message: types.Message):
     keyboard.row("IG Mother Account", "IG 2fa")
     keyboard.row("IG Cookies", "🔄 রিফ্রেশ") 
     
-    msg =""" 📣Nord VPN Premium 
+    msg = """ 📣Nord VPN Premium 
 ━━━━━━━━━━━━━━━━━━
 
 🔶 Email ➤ gaughan9999@hotmail.co.uk
@@ -297,7 +297,7 @@ async def ask_work_type(message: types.Message, state: FSMContext):
     btn_single = types.InlineKeyboardButton("👤 Single ID", callback_data="type_single")
 
     if message.text == "IG Cookies":
-        btn_link = types.InlineKeyboardButton("🔗 Submit Link", url="https://t.me/instafb_hub/108")
+        btn_link = types.InlineKeyboardButton("🔗 Submit Link", url="https://t.me/instafbhub/147")
         inline_kb.add(btn_file, btn_single)
         inline_kb.add(btn_link)
     else:
