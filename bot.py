@@ -131,7 +131,6 @@ class BotState(StatesGroup):
     waiting_for_address = State()
     waiting_for_withdraw_amount = State()
     waiting_for_add_money = State()
-    waiting_for_add_money = State()
     # নিচে এই ৩টি লাইন লিখে দিন
     waiting_for_single_user = State()
     waiting_for_single_pass = State()
@@ -232,20 +231,23 @@ async def start(message: types.Message, state: FSMContext):
 
     # ৩. ইনলাইন বাটন ও ওয়েলকাম মেসেজ সেটআপ
     inline_kb = types.InlineKeyboardMarkup(row_width=2)
-    help_button = types.InlineKeyboardButton(text="🆘 Contact Support", url="https://t.me/instafbhub_support") 
+    help_button = types.InlineKeyboardButton(text="🆘 Contact Support", url="t.me/INSTAFB_SUPPORT") 
     inline_kb.add(help_button)
 
     welcome_text = """📢 আজকের কাজের আপডেট এবং রেট লিস্ট 📢
-📌 Instagram 2FA: ২.৩০ ৳
-📌 Instagram Cookies: ৩.৯০ ৳
-📌 Instagram Mother: ৭ ৳
-📌 Facebook FBc00Fnd: ৫.৮০ ৳
 
-🏠 Support: @Dinanhaji"""
+📌 Instagram 2FA: ২.৬০ ৳
+
+📌 Instagram Cookies: ৪.০০ ৳
+
+📌 Instagram Mother: ৭.০০ ৳
+
+📌 Facebook FB00 Fnd 2FA: ৫.৮০ ৳
+"""
 
     # ৪. ইউজারকে মেসেজ পাঠানো
     await message.answer(welcome_text, reply_markup=inline_kb, parse_mode="Markdown")
-    await message.answer("✅ আপনার কাজের ধরণ বেছে নিন:", reply_markup=main_menu())
+    await message.answer("❓কী করতে চান বেছে নিন ◀️", reply_markup=main_menu())
     
 # =========================================
 # ১. এখানে নামের বানান এবং স্পেস আপনার বাটন অনুযায়ী ঠিক করা হয়েছে
@@ -262,18 +264,17 @@ async def work_start(message: types.Message):
     keyboard.row("IG Mother Account", "IG 2fa")
     keyboard.row("IG Cookies", "🔄 রিফ্রেশ") 
     
-    msg = """Nord VPN 🫱
-🤩Mail: * 3tx0zztil1@xkxkud.com *
-Pass: * RJR83@RdFr2@ *
+    msg =""" 📣Nord VPN Premium 
+━━━━━━━━━━━━━━━━━━
 
-🤩Mail: * 377guy1zb4@dollicons.com *
-Pass: * RJR83@RdFr2@ *
+🔶 Email ➤ gaughan9999@hotmail.co.uk
+🔑 Pass  ➤ Auders*1
 
-🤩Mail: * icufc65r6j@dollicons.com *
-Pass: * RJR83@RdFr2@ *
-    
-👍 যেকোনো সমস্যায়: @Dinanhaji !
-🔴 আপনার কাজের ক্যাটাগরি বেছে নিন:"""
+🔶 Email ➤ betzcampaign@gmail.com
+🔑 Pass  ➤ Hnhnddio1986!
+
+🔶 Email ➤ thomasvcrowl@gmail.com
+🔑 Pass  ➤ HeretiC762!!"""
 
     await message.answer(msg, reply_markup=keyboard, parse_mode="Markdown")
 
@@ -367,11 +368,11 @@ async def get_2fa(message: types.Message, state: FSMContext):
     if category == "FB 00 Fnd 2fa":
         amount_to_add = 5.80
     elif category == "IG Cookies":
-        amount_to_add = 3.90
+        amount_to_add = 4
     elif category == "IG Mother Account":
         amount_to_add = 7
     elif category == "IG 2fa":
-        amount_to_add = 2.50
+        amount_to_add = 2.60
 
     # শুধুমাত্র সিঙ্গেল আইডি জমা দিলে ব্যালেন্স আপডেট হবে
         # মেইন ব্যালেন্সের বদলে পেন্ডিং ব্যালেন্সে টাকা জমা হবে
@@ -428,7 +429,7 @@ async def withdraw_main_menu(message: types.Message):
     keyboard.add(
         types.InlineKeyboardButton("➕ Add Payment Method", callback_data="add_method"),
         types.InlineKeyboardButton("💸 Withdraw", callback_data="start_withdraw"),
-        types.InlineKeyboardButton("🔄 Refresh", callback_data="refresh_wd")
+        types.InlineKeyboardButton("🔄 রিফ্রেশ", callback_data="refresh_wd")
     )
     
     text = (
@@ -918,7 +919,7 @@ async def support_message(message: types.Message):
     text = (
         "👋 **হ্যালো! আমাদের সাপোর্ট সেন্টারে আপনাকে স্বাগতম।**\n\n"
         "যেকোনো সমস্যা বা তথ্যের জন্য নিচে ক্লিক করুন:\n\n"
-        "🎥 **Bot Setup:** [VIDEO](ht)\n"
+        "🖲️ **SUPPORT BOT** [BOT](https://t.me/instafbhubsupport_bot)\n"
         "📢 **আপডেট গ্রুপ:** [Join Channel](https://t.me/instafbhub)\n"
         "🛠 **হেল্প সাপোর্ট:** [Contact Support](https://t.me/INSTAFB_SUPPORT)\n\n"
         "✅আমরা আপনাকে দ্রুত সাহায্য করার চেষ্টা করব। ধন্যবাদ!"
@@ -1200,7 +1201,7 @@ async def get_today_stats(message: types.Message):
         response_text += "সবাই আজকে কাজ করেছে!"
 
     # ৩. মেসেজ পাঠানো (অনেক বড় হলে ভাগ করে পাঠানো)
-    if len(response_text) > 4000:
+    if len(response_text) > 3500:
         # মেসেজ খুব বড় হলে পার্ট পার্ট করে পাঠানো
         for i in range(0, len(response_text), 4000):
             await message.answer(response_text[i:i+4000], parse_mode="Markdown")
