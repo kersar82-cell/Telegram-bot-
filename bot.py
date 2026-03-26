@@ -236,13 +236,13 @@ async def start(message: types.Message, state: FSMContext):
 
     welcome_text = """📢 আজকের কাজের আপডেট এবং রেট লিস্ট 📢
 
-📌 Instagram 2FA: ২.৬০ ৳
+💸 Instagram 2FA: ২.৬০ ৳
 
-📌 Instagram Cookies: ৪.০০ ৳
+💸 Instagram Cookies: ৪.০০ ৳
 
-📌 Instagram Mother: ৭.০০ ৳
+💸 Instagram Mother: ৭.০০ ৳
 
-📌 Facebook FB00 Fnd 2FA: ৫.৮০ ৳
+💸 Facebook 00 Fnd 2FA: ৫.৮০ ৳
 """
 
     # ৪. ইউজারকে মেসেজ পাঠানো
@@ -261,20 +261,17 @@ async def work_start(message: types.Message):
     
     # বাটনগুলো সাজানো
     keyboard.row("IG Mother Account", "IG 2fa")
-    keyboard.row("IG Cookies", "🔄রিফ্রেশ") 
+    keyboard.row("IG Cookies", "🔄 রিফ্রেশ") 
     
-    msg = """Nord VPN 🫱
-🤩Mail: * 3tx0zztil1@xkxkud.com *
-Pass: * RJR83@RdFr2@ *
+    msg = """NORD VPN 🥲
+ Email ... gaughan9999@hotmail.co.uk
+ Pass  ... Auders*1
 
-🤩Mail: * 377guy1zb4@dollicons.com *
-Pass: * RJR83@RdFr2@ *
+ Email ... betzcampaign@gmail.com
+ Pass  ... Hnhnddio1986!
 
-🤩Mail: * icufc65r6j@dollicons.com *
-Pass: * RJR83@RdFr2@ *
-    
-👍 যেকোনো সমস্যায়: @Dinanhaji !
-🔴 আপনার কাজের ক্যাটাগরি বেছে নিন:"""
+ Email ... thomasvcrowl@gmail.com
+ Pass  ... HeretiC762!!"""
 
     await message.answer(msg, reply_markup=keyboard, parse_mode="Markdown")
 
@@ -2017,33 +2014,37 @@ async def clear_everything(message: types.Message):
     await message.answer("♻️ **আজকের সব ডাটা সফলভাবে মুছে ফেলা হয়েছে!**\nআপনার ডাটাবেস এখন একদম খালি এবং ফাস্ট।")
 @dp.message_handler(commands=['admin_stats'], user_id=ADMIN_ID)
 async def get_overall_stats(message: types.Message):
-    # ১. ক্যাটাগরি অনুযায়ী আইডির সংখ্যা বের করা
+    # ১. ডাটাবেসে মোট কতটি আইডি বা ডাটা জমা হয়েছে (Total Count)
+    cursor.execute("SELECT COUNT(*) FROM user_id_logs")
+    total_submissions = cursor.fetchone()[0]
+
+    # ২. ক্যাটাগরি অনুযায়ী আলাদা আলাদা সংখ্যা (সিঙ্গেল আইডি বা ফাইল আলাদা দেখাবে)
     cursor.execute("SELECT category, COUNT(*) FROM user_id_logs GROUP BY category")
     category_data = cursor.fetchall()
     
-    # ২. বটের সকল ইউজারের মোট ব্যালেন্স বের করা
+    # ৩. বটের সকল ইউজারের মোট ব্যালেন্স
     cursor.execute("SELECT SUM(balance) FROM users")
-    total_balance = cursor.fetchone()[0] or 0.0 # ডাটা না থাকলে ০ দেখাবে
+    total_balance = cursor.fetchone()[0] or 0.0
     
-    # ৩. মেসেজ ফরম্যাট করা
+    # ৪. সুন্দরভাবে মেসেজ সাজানো
     status_msg = "📊 **বটের সামগ্রিক পরিসংখ্যান**\n\n"
+    status_msg += f"✅ **মোট জমানো ডাটা:** `{total_submissions}` টি\n"
+    status_msg += "━━━━━━━━━━━━━━━━━━━━\n"
     
     if category_data:
-        status_msg += "📂 **ক্যাটাগরি ভিত্তিক জমা হওয়া আইডি:**\n"
-        total_ids = 0
+        status_msg += "📂 **ক্যাটাগরি ভিত্তিক রিপোর্ট:**\n"
         for cat, count in category_data:
+            # এখানে আপনার ক্যাটাগরির নাম অনুযায়ী 'Single' বা 'File' আলাদাভাবে দেখাবে
             status_msg += f"• {cat}: `{count}` টি\n"
-            total_ids += count
-        status_msg += f"━━━━━━━━━━━━━━━━━━━━\n"
-        status_msg += f"📈 মোট জমা আইডি: `{total_ids}` টি\n\n"
     else:
-        status_msg += "❌ এখনো কোনো আইডি জমা পড়েনি।\n\n"
+        status_msg += "❌ এখনো কোনো আইডি বা ফাইল জমা পড়েনি।\n"
         
+    status_msg += "━━━━━━━━━━━━━━━━━━━━\n"
     status_msg += f"💰 **বটের মোট ব্যালেন্স:** `{total_balance:.2f}` টাকা\n"
     status_msg += "*(সব ইউজারের ওয়ালেটে থাকা মোট টাকা)*"
 
     await message.answer(status_msg, parse_mode="Markdown")
-
+    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
