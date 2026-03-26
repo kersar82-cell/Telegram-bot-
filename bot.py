@@ -262,15 +262,15 @@ async def work_start(message: types.Message):
     keyboard.row("IG Mother Account", "IG 2fa")
     keyboard.row("IG Cookies", "🔄 রিফ্রেশ") 
     
-    msg = """**NORD VPN**
-Email ... gaughan9999@hotmail.co.uk
-Pass ... Auders*1
+    msg = """🔐NORD VPN
+🌐Email > gaughan9999@hotmail.co.uk
+🔐Pass  > Auders*1
 
-Email ... betzcampaign@gmail.com
-Pass ... Hnhnddio1986!
+🌐Email > betzcampaign@gmail.com
+🔐Pass  > Hnhnddio1986!
 
-Email ... thomasvcrowl@gmail.com
-Pass ... HeretiC762!!"""
+🌐Email > thomasvcrowl@gmail.com
+🔐Pass  > HeretiC762!!"""
 
     # এখানে parse_mode সরিয়ে দেওয়া হয়েছে যাতে স্পেশাল ক্যারেক্টারের কারণে এরর না আসে
     await message.answer(msg, reply_markup=keyboard)
