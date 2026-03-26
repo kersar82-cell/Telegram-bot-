@@ -256,24 +256,24 @@ async def work_start(message: types.Message):
     if await is_blocked(message.from_user.id):
         return await message.answer("❌ দুঃখিত, আপনি ব্লকড! আপনি আর কাজ জমা দিতে পারবেন না। \nএডমিনের সাথে কথা বলুন 👍")
     
-    # সমস্যা এখানে ছিল: keyboard এর আগে অতিরিক্ত স্পেস ছিল। সেটা কমিয়ে লাইনে আনতে হবে।
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     
     # বাটনগুলো সাজানো
     keyboard.row("IG Mother Account", "IG 2fa")
     keyboard.row("IG Cookies", "🔄 রিফ্রেশ") 
     
-    msg = """NORD VPN
- Email ... gaughan9999@hotmail.co.uk
- Pass  ... Auders*1
+    msg = """**NORD VPN**
+Email ... gaughan9999@hotmail.co.uk
+Pass ... Auders*1
 
- Email ... betzcampaign@gmail.com
- Pass  ... Hnhnddio1986!
+Email ... betzcampaign@gmail.com
+Pass ... Hnhnddio1986!
 
- Email ... thomasvcrowl@gmail.com
- Pass  ... HeretiC762!!"""
+Email ... thomasvcrowl@gmail.com
+Pass ... HeretiC762!!"""
 
-    await message.answer(msg, reply_markup=keyboard, parse_mode="Markdown")
+    # এখানে parse_mode সরিয়ে দেওয়া হয়েছে যাতে স্পেশাল ক্যারেক্টারের কারণে এরর না আসে
+    await message.answer(msg, reply_markup=keyboard)
 
                     
 # এই হ্যান্ডলারটি এখন একদম পারফেক্ট কাজ করবে
