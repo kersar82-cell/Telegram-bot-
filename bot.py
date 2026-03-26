@@ -263,7 +263,7 @@ async def work_start(message: types.Message):
     keyboard.row("IG Mother Account", "IG 2fa")
     keyboard.row("IG Cookies", "🔄 রিফ্রেশ") 
     
-    msg = """NORD VPN 🥲
+    msg = """NORD VPN
  Email ... gaughan9999@hotmail.co.uk
  Pass  ... Auders*1
 
