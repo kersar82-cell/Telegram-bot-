@@ -728,15 +728,7 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
     kb.add(approve_btn, reject_btn)
 
     # ৪. এরপর অ্যাডমিনকে মেসেজ পাঠানো
-    try:
-        await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb, parse_mode="HTML")
-        await message.answer("✅ আপনার উইথড্র রিকোয়েস্ট সফলভাবে জমা হয়েছে!", reply_markup=main_menu())
-    except Exception as e:
-        # কোনো কারণে মেসেজ না গেলে ব্যালেন্স রিফান্ড করে দেওয়া
-        cursor.execute("UPDATE users SET balance = balance + ?, withdraw_count = withdraw_count - 1 WHERE user_id = ?", (amount, user_id))
-        db.commit()
-        await message.answer("❌ সিস্টেম এরর! অ্যাডমিনকে রিকোয়েস্ট পাঠানো যায়নি। আপনার টাকা রিফান্ড করা হয়েছে।")
-    
+
 @dp.message_handler(state=BotState.waiting_for_withdraw_amount)
 async def process_withdraw_final(message: types.Message, state: FSMContext):
     # ১. ইনপুট চেক এবং দশমিক থাকলেও তা পূর্ণসংখ্যায় রূপান্তর (যেমন: ৫.৭৯ হবে ৫)
