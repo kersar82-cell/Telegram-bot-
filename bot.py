@@ -710,9 +710,33 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
         f"পেমেন্ট করে নিচের বাটনে ক্লিক করুন 👇"
     )
 
-    # ৩. এইখানে আগের kb সরিয়ে এটি বসান
-    kb = types.InlineKeyboardMarkup()
-    kb.add(
+    # ৩. ইনলাইন কিবোর্ড তৈরি (Approve এবং Reject বাটন)
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    
+    # Approve বাটনে ইউজার আইডি, অ্যামাউন্ট এবং কমিশন পাঠানো হচ্ছে
+    approve_btn = types.InlineKeyboardButton(
+        text="✅ Approve", 
+        callback_data=f"admin_payment_approve_{user_id}_{amount}_{commission}"
+    )
+    
+    # Reject বাটনে শুধু ইউজার আইডি এবং অ্যামাউন্ট পাঠানো হচ্ছে (যাতে রিজেক্ট করলে টাকা ফেরত দেওয়া যায়)
+    reject_btn = types.InlineKeyboardButton(
+        text="❌ Reject", 
+        callback_data=f"admin_payment_reject_{user_id}_{amount}"
+    )
+    
+    kb.add(approve_btn, reject_btn)
+
+    # ৪. এরপর অ্যাডমিনকে মেসেজ পাঠানো
+    try:
+        await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb, parse_mode="HTML")
+        await message.answer("✅ আপনার উইথড্র রিকোয়েস্ট সফলভাবে জমা হয়েছে!", reply_markup=main_menu())
+    except Exception as e:
+        # কোনো কারণে মেসেজ না গেলে ব্যালেন্স রিফান্ড করে দেওয়া
+        cursor.execute("UPDATE users SET balance = balance + ?, withdraw_count = withdraw_count - 1 WHERE user_id = ?", (amount, user_id))
+        db.commit()
+        await message.answer("❌ সিস্টেম এরর! অ্যাডমিনকে রিকোয়েস্ট পাঠানো যায়নি। আপনার টাকা রিফান্ড করা হয়েছে।")
+    
 @dp.message_handler(state=BotState.waiting_for_withdraw_amount)
 async def process_withdraw_final(message: types.Message, state: FSMContext):
     # ১. ইনপুট চেক এবং দশমিক থাকলেও তা পূর্ণসংখ্যায় রূপান্তর (যেমন: ৫.৭৯ হবে ৫)
