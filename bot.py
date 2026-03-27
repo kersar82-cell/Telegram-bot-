@@ -2034,6 +2034,79 @@ async def get_overall_stats(message: types.Message):
     status_msg += "*(সব ইউজারের ওয়ালেটে থাকা মোট টাকা)*"
 
     await message.answer(status_msg, parse_mode="Markdown")
+   # ==========================================
+# ৪. নতুন অ্যাডমিন প্যানেল কমান্ডসমূহ
+# ==========================================
+
+# ১. ইউজারের পেমেন্ট মেথড চেক করার কমান্ড
+@dp.message_handler(commands=['check_payment'], user_id=ADMIN_ID)
+async def check_user_payment(message: types.Message):
+    args = message.get_args()
+    if not args or not args.isdigit():
+        return await message.answer("⚠️ আইডি দিন। উদাহরণ: `/check_payment 12345678`")
+
+    target_id = int(args)
+    cursor.execute("""SELECT bkash_num, nagad_num, rocket_num, recharge_num, binance_id 
+                      FROM users WHERE user_id=?""", (target_id,))
+    res = cursor.fetchone()
+
+    if res:
+        bkash, nagad, rocket, recharge, binance = res
+        info_text = (
+            f"💳 **ইউজার পেমেন্ট ডিটেইলস (ID: `{target_id}`)**\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📱 রিচার্জ নম্বর: `{recharge or 'সেট নেই'}`\n"
+            f"🟢 বিকাশ: `{bkash or 'সেট নেই'}`\n"
+            f"🟠 নগদ: `{nagad or 'সেট নেই'}`\n"
+            f"💜 রকেট: `{rocket or 'সেট নেই'}`\n"
+            f"🟡 বিন্যান্স ID: `{binance or 'সেট নেই'}`\n"
+            f"━━━━━━━━━━━━━━━━━━━━"
+        )
+        await message.answer(info_text, parse_mode="Markdown")
+    else:
+        await message.answer("❌ এই আইডি দিয়ে কোনো ইউজার পাওয়া যায়নি।")
+
+# ২. ইউজারের সকল ব্যালেন্স (মেইন, রেফার, পেন্ডিং) দেখার কমান্ড
+@dp.message_handler(commands=['check_balance'], user_id=ADMIN_ID)
+async def check_user_balance(message: types.Message):
+    args = message.get_args()
+    if not args or not args.isdigit():
+        return await message.answer("⚠️ আইডি দিন। উদাহরণ: `/check_balance 12345678`")
+
+    target_id = int(args)
+    cursor.execute("SELECT balance, refer_balance, pending_balance FROM users WHERE user_id=?", (target_id,))
+    res = cursor.fetchone()
+
+    if res:
+        main_bal, ref_bal, pend_bal = res
+        balance_text = (
+            f"💰 **ব্যালেন্স রিপোর্ট (ID: `{target_id}`)**\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"💵 মেইন ব্যালেন্স: `{main_bal:.2f} ৳`\n"
+            f"👥 রেফার ব্যালেন্স: `{ref_bal:.2f} ৳`\n"
+            f"⏳ পেন্ডিং ব্যালেন্স: `{pend_bal:.2f} ৳`\n"
+            f"━━━━━━━━━━━━━━━━━━━━"
+        )
+        await message.answer(balance_text, parse_mode="Markdown")
+    else:
+        await message.answer("❌ ইউজার পাওয়া যায়নি।")
+
+# ৩. ইউজারের মোট রেফারেল সংখ্যা দেখার কমান্ড
+@dp.message_handler(commands=['check_refer'], user_id=ADMIN_ID)
+async def check_user_refer(message: types.Message):
+    args = message.get_args()
+    if not args or not args.isdigit():
+        return await message.answer("⚠️ আইডি দিন। উদাহরণ: `/check_refer 12345678`")
+
+    target_id = int(args)
+    cursor.execute("SELECT referral_count FROM users WHERE user_id=?", (target_id,))
+    res = cursor.fetchone()
+
+    if res:
+        ref_count = res[0]
+        await message.answer(f"👤 **ইউজার আইডি:** `{target_id}`\n🎁 **মোট রেফারেল:** `{ref_count}` জন।", parse_mode="Markdown")
+    else:
+        await message.answer("❌ ইউজার পাওয়া যায়নি।")
     
 if __name__ == '__main__':
     keep_alive()
