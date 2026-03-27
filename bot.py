@@ -1318,62 +1318,61 @@ async def get_today_stats(message: types.Message):
     else:
         await message.answer(response_text, parse_mode="Markdown")
 #==============
-# ৪. উইথড্র এপ্রুভ/রিজেক্ট বাটন প্রসেস
-# ==========================================
-@dp.callback_query_handler(lambda c: c.data.startswith('admin_payment_'), user_id=ADMIN_ID)
-async def finalize_admin_action(call: types.CallbackQuery):
+# --- ১. Approve বাটন হ্যান্ডলার ---
+@dp.callback_query_handler(lambda c: c.data.startswith('admin_payment_approve_'))
+async def approve_payment_logic(call: types.CallbackQuery):
+    # ডেটা স্লাইস করে বের করা
     data = call.data.split('_')
-    # data[2]=approve/reject, data[3]=user_id, data[4]=amount, data[5]=commission
-    action = data[2]
-    target_uid = int(data[3])
-    amount = float(data[4])
+    # ফরম্যাট: ['admin', 'payment', 'approve', 'user_id', 'amount', 'commission']
+    target_user_id = int(data[3])
+    amount = int(data[4])
+    commission = int(float(data[5])) # দশমিক থাকলে পূর্ণসংখ্যা করে নেবে
+
+    # ১. রেফারার খুঁজে বের করে কমিশন দেওয়া
+    cursor.execute("SELECT referred_by FROM users WHERE user_id=?", (target_user_id,))
+    res = cursor.fetchone()
     
-    if action == "approve":
-        commission = float(data[5]) # বাটন থেকে আসা কমিশন
-
-        # ১. ডাটাবেস থেকে রেফারার এবং ইউজারের বর্তমান উইথড্র সংখ্যা আনা
-        cursor.execute("SELECT referred_by, withdraw_count FROM users WHERE user_id=?", (target_uid,))
-        res = cursor.fetchone()
-        referrer_id = res[0] if res else 0
-        wd_count = (res[1] or 0) + 1 # এই উইথড্রটি নিয়ে মোট সংখ্যা
-
-        # ২. উইথড্র সংখ্যা ১ বাড়িয়ে দেওয়া
-        cursor.execute("UPDATE users SET withdraw_count = ? WHERE user_id = ?", (wd_count, target_uid))
-        db.commit()
-
-        commission_msg = ""
-        # ৩. যদি ১০ বারের নিচে থাকে এবং রেফারার থাকে, তবে কমিশন দেওয়া
-        if referrer_id != 0 and wd_count <= 10:
-            cursor.execute("UPDATE users SET refer_balance = refer_balance + ? WHERE user_id = ?", (commission, referrer_id))
-            db.commit()
-            commission_msg = f"\n🎁 রেফারার ({referrer_id}) কে {commission:.2f} ৳ কমিশন দেওয়া হয়েছে।"
-            
-            # রেফারারকে নোটিফিকেশন পাঠানো
-            try:
-                await bot.send_message(referrer_id, f"🎊 আপনার রেফারে জয়েন করা ইউজার উইথড্র করায় আপনি **{commission:.2f} ৳** রেফার কমিশন পেয়েছেন!")
-            except: pass
-
-        # ৪. উইথড্র করা ইউজারকে জানানো
-        try:
-            await bot.send_message(target_uid, f"✅ **আপনার উইথড্র অ্যাপ্রুভ হয়েছে!**\n💰 পরিমাণ: {amount} ৳\nপেমেন্ট আপনার একাউন্টে পাঠিয়ে দেওয়া হয়েছে।")
-        except: pass
-            
-        # ৫. অ্যাডমিন মেসেজ আপডেট
-        await call.message.edit_text(call.message.text + f"\n\n✅ **Status: Approved**{commission_msg}")
-        await call.answer("সফলভাবে অ্যাপ্রুভ ও কমিশন দেওয়া হয়েছে।", show_alert=True)
-
-    elif action == "reject":
-        # টাকা ফেরত দেওয়া (মেইন ব্যালেন্সে)
-        cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, target_uid))
+    if res and res[0]:
+        referrer_id = res[0]
+        # রেফারারের মেইন ব্যালেন্স ও রেফার ব্যালেন্সে কমিশন যোগ (Integer)
+        cursor.execute("UPDATE users SET balance = balance + ?, refer_balance = refer_balance + ? WHERE user_id = ?", 
+                       (commission, commission, referrer_id))
         db.commit()
         
         try:
-            await bot.send_message(target_uid, f"❌ **আপনার উইথড্র রিজেক্ট করা হয়েছে।**\n💰 {amount} ৳ আপনার মেইন ব্যালেন্সে ফেরত দেওয়া হয়েছে।")
+            await bot.send_message(referrer_id, f"🎊 আপনার রেফারেল `{target_user_id}` উইথড্র করেছে!\n🎁 আপনি **{commission} ৳** রেফার কমিশন পেয়েছেন।")
         except: pass
-            
-        await call.message.edit_text(call.message.text + "\n\n❌ **Status: Rejected (টাকা ফেরত)**")
-        await call.answer("রিজেক্ট করা হয়েছে!", show_alert=True)
-        
+
+    # ২. উইথড্র করা ইউজারকে জানানো
+    try:
+        await bot.send_message(target_user_id, f"✅ আপনার **{amount} ৳** উইথড্র রিকোয়েস্টটি সফলভাবে সম্পন্ন হয়েছে।")
+    except: pass
+
+    # ৩. অ্যাডমিন প্যানেলে মেসেজ আপডেট
+    new_text = call.message.text + f"\n\n✅ **Status: Approved**\n💰 Amount: {amount}৳\n🎁 Commission: {commission}৳"
+    await call.message.edit_text(new_text, reply_markup=None) # বাটন সরিয়ে ফেলা হলো
+    await call.answer("পেমেন্ট সফলভাবে অনুমোদিত!")
+
+# --- ২. Reject বাটন হ্যান্ডলার ---
+@dp.callback_query_handler(lambda c: c.data.startswith('admin_payment_reject_'))
+async def reject_payment_logic(call: types.CallbackQuery):
+    data = call.data.split('_')
+    target_user_id = int(data[3])
+    amount = int(data[4])
+
+    # ইউজারের টাকা ফেরত দেওয়া এবং উইথড্র কাউন্ট ১ কমানো
+    cursor.execute("UPDATE users SET balance = balance + ?, withdraw_count = withdraw_count - 1 WHERE user_id = ?", 
+                   (amount, target_user_id))
+    db.commit()
+
+    try:
+        await bot.send_message(target_user_id, f"❌ আপনার **{amount} ৳** উইথড্র রিকোয়েস্টটি অ্যাডমিন রিজেক্ট করেছে। টাকা আপনার ব্যালেন্সে ফেরত দেওয়া হয়েছে।")
+    except: pass
+
+    new_text = call.message.text + f"\n\n❌ **Status: Rejected**\n💰 Refunded: {amount}৳"
+    await call.message.edit_text(new_text, reply_markup=None)
+    await call.answer("পেমেন্ট রিজেক্ট করা হয়েছে।")
+
 import random
 
 # ১. ফেক মেম্বার অ্যাড করার কমান্ড (অ্যাডমিনের জন্য)
