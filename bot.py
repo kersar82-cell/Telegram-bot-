@@ -731,81 +731,87 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
 
 @dp.message_handler(state=BotState.waiting_for_withdraw_amount)
 async def process_withdraw_final(message: types.Message, state: FSMContext):
-    # ১. ইনপুট চেক এবং দশমিক থাকলেও তা পূর্ণসংখ্যায় রূপান্তর (যেমন: ৫.৭৯ হবে ৫)
-    try:
-        # ইউজার যদি ৫.৭৯ লেখে, float() সেটাকে ৫.৭৯ করবে আর int() সেটাকে ৫ করে দেবে
-        amount = int(float(message.text))
-    except (ValueError, TypeError):
+    if not message.text.isdigit():
         return await message.answer("❌ অনুগ্রহ করে সঠিক সংখ্যা লিখুন (যেমন: ১০০)")
 
+    amount = int(message.text)
     user_id = message.from_user.id
     
-    # ডাটাবেস থেকে ইউজারের বর্তমান তথ্য আনা
-    cursor.execute("SELECT balance, bkash_num, nagad_num, rocket_num, binance_id, recharge_num, withdraw_count FROM users WHERE user_id=?", (user_id,))
+        
+    # ডাটাবেস থেকে তথ্য আনা (নতুনভাবে withdraw_count এবং referred_by সহ)
+    cursor.execute("SELECT balance, bkash_num, nagad_num, rocket_num, binance_id, recharge_num, withdraw_count, referred_by FROM users WHERE user_id=?", (user_id,))
     res = cursor.fetchone()
     
-    if not res:
-        await state.finish()
-        return await message.answer("❌ ডাটাবেসে আপনার তথ্য পাওয়া যায়নি।")
-
-    balance, bkash, nagad, rocket, binance, recharge, wd_count = res
+    # ডাটাগুলো আলাদা করা
+    balance, bkash, nagad, rocket, binance, recharge, wd_count, ref_by = res
+    if amount > balance:
+        return await message.answer(f"❌ আপনার ব্যালেন্স পর্যাপ্ত নয়! বর্তমান: {balance} ৳")
     
-    # ব্যালেন্স চেক (দশমিক বাদ দিয়ে তুলনা করা হচ্ছে)
-    if amount > int(balance):
-        return await message.answer(f"❌ আপনার ব্যালেন্স পর্যাপ্ত নয়! বর্তমান: {int(balance)} ৳")
-    
-    # ২. স্টেট থেকে উইথড্র টাইপ (Recharge নাকি Send Money) নেওয়া
+    # স্টেট থেকে জেনে নেওয়া ইউজার কোনটি সিলেক্ট করেছিল (recharge নাকি sendmoney)
     data = await state.get_data()
     w_type = data.get('withdraw_type')
 
-    # ৩. কমিশন ও পরবর্তী উইথড্র সংখ্যা হিসাব (দশমিক ছাড়া)
-    commission = int(amount * 0.05)
-    next_wd_number = (wd_count or 0) + 1
-
-    # ৪. ইউজারের ব্যালেন্স আপডেট (ডাটাবেসে পূর্ণসংখ্যা হিসেবে সেভ হবে)
-    new_balance = int(balance - amount)
-    cursor.execute("UPDATE users SET balance = ?, withdraw_count = ? WHERE user_id = ?", (new_balance, next_wd_number, user_id))
+    # ব্যালেন্স কাটা
+    new_balance = balance - amount
+    cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (new_balance, user_id))
     db.commit()
-
-    # ৫. মেথড অনুযায়ী পেমেন্ট ডিটেইলস সাজানো (HTML ব্যবহার করা হয়েছে)
+   # --- এখানে বসান (ধাপ ২) ---
+    commission = amount * 0.05
+    next_wd_number = (wd_count or 0) + 1
+    # --- অ্যাডমিন মেসেজ তৈরির লজিক ---
     if w_type == "recharge":
-        method_details = f"📱 Recharge: <code>{recharge or 'Not Set'}</code>"
+        # শুধু রিচার্জের তথ্য
+        method_details = f"📱 **Recharge Number:** `{recharge or 'Not Set'}`"
         withdraw_title = "📱 নতুন রিচার্জ রিকোয়েস্ট!"
     else:
+        # সেন্ড মানির সব মেথড (বিকাশ, নগদ ইত্যাদি)
         method_details = (
-            f"🟢 bKash: <code>{bkash or 'Not Set'}</code>\n"
-            f"🟠 Nagad: <code>{nagad or 'Not Set'}</code>\n"
-            f"💜 Rocket: <code>{rocket or 'Not Set'}</code>\n"
-            f"🟡 Binance: <code>{binance or 'Not Set'}</code>"
+            f"🟢 bKash: `{bkash or 'Not Set'}`\n"
+            f"🟠 Nagad: `{nagad or 'Not Set'}`\n"
+            f"💜 Rocket: `{rocket or 'Not Set'}`\n"
+            f"🟡 Binance: `{binance or 'Not Set'}`"
         )
         withdraw_title = "💸 নতুন সেন্ড মানি রিকোয়েস্ট!"
 
+        # --- এই লাইনের নিচ থেকে আগের admin_text এবং kb সরিয়ে ফেলুন ---
+    
+        # ... আগের ব্যালেন্স আপডেট এবং কমিশনের হিসাবের নিচে ...
     user_name = f"@{message.from_user.username}" if message.from_user.username else "নেই"
     
-    # অ্যাডমিনকে পাঠানোর জন্য মেসেজ ফরম্যাট
+    # ২. এইখানে আপনার আগের admin_text সরিয়ে এটি বসান
     admin_text = (
-        f"<b>{withdraw_title}</b>\n"
+        f"{withdraw_title}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"👤 ইউজার: {user_name}\n"
-        f"🆔 আইডি: <code>{user_id}</code>\n\n"
-        f"💵 উইথড্র পরিমাণ: <b>{amount} ৳</b>\n"
-        f"🎁 <b>রেফার কমিশন (৫%):</b> <code>{commission} ৳</code>\n"
-        f"📊 উইথড্র সংখ্যা: <code>{next_wd_number}/10</code>\n"
+        f"🆔 আইডি: `{user_id}`\n\n"
+        f"💵 উইথড্র পরিমাণ: **{amount} ৳**\n"
+        f"🎁 **রেফার কমিশন (৫%):** `{commission:.2f} ৳`\n"
+        f"📊 উইথড্র সংখ্যা: `{next_wd_number}/10` (লিমিট)\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🏠 <b>পেমেন্ট ডিটেইলস:</b>\n"
+        f"🏠 **পেমেন্ট ডিটেইলস:**\n"
         f"{method_details}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"পেমেন্ট করে নিচের বাটনে ক্লিক করুন 👇"
     )
 
-    kb = types.InlineKeyboardMarkup()
-    kb.add(
-        # callback_data তে commission পাঠানো হয়েছে অনুমোদনের পর যোগ করার জন্য
-        types.InlineKeyboardButton("✅ Approve", callback_data=f"admin_payment_approve_{user_id}_{amount}_{commission}"),
-        types.InlineKeyboardButton("❌ Reject", callback_data=f"admin_payment_reject_{user_id}_{amount}")
+    # ৩. ইনলাইন কিবোর্ড তৈরি (Approve এবং Reject বাটন)
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    
+    # Approve বাটনে ইউজার আইডি, অ্যামাউন্ট এবং কমিশন পাঠানো হচ্ছে
+    approve_btn = types.InlineKeyboardButton(
+        text="✅ Approve", 
+        callback_data=f"admin_payment_approve_{user_id}_{amount}_{commission}"
     )
+    
+    # Reject বাটনে শুধু ইউজার আইডি এবং অ্যামাউন্ট পাঠানো হচ্ছে (যাতে রিজেক্ট করলে টাকা ফেরত দেওয়া যায়)
+    reject_btn = types.InlineKeyboardButton(
+        text="❌ Reject", 
+        callback_data=f"admin_payment_reject_{user_id}_{amount}"
+    )
+    
+    kb.add(approve_btn, reject_btn)
 
-    # অ্যাডমিনকে মেসেজ পাঠানো
+    # ৪. এরপর অ্যাডমিনকে মেসেজ পাঠানো
     try:
         await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb, parse_mode="HTML")
         await message.answer("✅ আপনার উইথড্র রিকোয়েস্ট সফলভাবে জমা হয়েছে!", reply_markup=main_menu())
@@ -816,7 +822,7 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
         await message.answer("❌ সিস্টেম এরর! অ্যাডমিনকে রিকোয়েস্ট পাঠানো যায়নি। আপনার টাকা রিফান্ড করা হয়েছে।")
     
     # কাজ শেষ, স্টেট ক্লিয়ার করা
-    await state.finish()
+        await state.finish()
     
 # ==========================================
 @dp.message_handler(commands=['check_user'])
