@@ -541,30 +541,52 @@ async def save_sendmoney_db(message: types.Message, state: FSMContext):
     await message.answer(f"✅ আপনার **{p_type.upper()}** তথ্য সফলভাবে সেভ হয়েছে!", reply_markup=main_menu())
     await state.finish()
     # --- ১. উইথড্র বাটন ক্লিক করলে অপশন দেখানো ---
+# ১. উইথড্র বাটন দেখানোর ফাংশন (start_withdraw)
 @dp.callback_query_handler(text="start_withdraw", state="*")
 async def withdraw_selection(call: types.CallbackQuery, state: FSMContext):
     await state.finish()
     user_id = call.from_user.id
     
-    # ডাটাবেস থেকে ব্যালেন্স আনা
+    # ডাটাবেস থেকে ব্যালেন্স আনা (দশমিক ছাড়া দেখানোর জন্য int ব্যবহার)
     cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     res = cursor.fetchone()
-    balance = res[0] if res else 0
+    balance = int(res[0]) if res else 0
 
-    # এখানে কোনো ব্যালেন্স চেক নেই, সরাসরি দুটি বাটনই দেখাবে
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
-        types.InlineKeyboardButton("📱 Mobile Recharge", callback_data="wd_recharge"),
-        types.InlineKeyboardButton("💸 Send Money", callback_data="wd_sendmoney")
+        # এখানে callback_data গুলো নিচের হ্যান্ডলারের সাথে মিল রাখা হয়েছে
+        types.InlineKeyboardButton("📱 Mobile Recharge", callback_data="withdraw_recharge"),
+        types.InlineKeyboardButton("💸 Send Money", callback_data="withdraw_sendmoney")
     )
     
     text = (
-        f"💰 **আপনার বর্তমান ব্যালেন্স:** `{balance:.2f} ৳`\n"
+        f"💰 **আপনার বর্তমান ব্যালেন্স:** `{balance} ৳`\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         "আপনি কোন মাধ্যমে পেমেন্ট নিতে চান? সিলেক্ট করুন: 👇"
     )
 
-    await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    try:
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    except:
+        await call.message.answer(text, reply_markup=kb, parse_mode="Markdown")
+    
+    await call.answer()
+
+# ২. মেথড সিলেক্ট করার পর টাকা চাওয়ার হ্যান্ডলার
+@dp.callback_query_handler(lambda c: c.data in ['withdraw_recharge', 'withdraw_sendmoney'])
+async def process_withdraw_method(call: types.CallbackQuery, state: FSMContext):
+    # ইউজার কোনটি সিলেক্ট করেছে তা সেভ করা
+    method = "recharge" if call.data == "withdraw_recharge" else "sendmoney"
+    await state.update_data(withdraw_type=method)
+    
+    # এটি সবচেয়ে গুরুত্বপূর্ণ: এখন বট ইউজারের কাছ থেকে টাকার পরিমাণ আশা করবে
+    await BotState.waiting_for_withdraw_amount.set()
+    
+    await call.message.answer(
+        "💵 **আপনি কত টাকা উইথড্র করতে চান?**\n"
+        "পরিমাণটি সংখ্যায় লিখুন (যেমন: ১০০):",
+        parse_mode="Markdown"
+    )
     await call.answer()
 
 # --- সেন্ড মানি ক্লিক করলে ৫০ টাকার নিচের চেক ---
@@ -691,19 +713,95 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
     # ৩. এইখানে আগের kb সরিয়ে এটি বসান
     kb = types.InlineKeyboardMarkup()
     kb.add(
-        # এখানে callback_data এর ভেতর commission পাঠানো হয়েছে
+@dp.message_handler(state=BotState.waiting_for_withdraw_amount)
+async def process_withdraw_final(message: types.Message, state: FSMContext):
+    # ১. ইনপুট চেক এবং দশমিক থাকলেও তা পূর্ণসংখ্যায় রূপান্তর (যেমন: ৫.৭৯ হবে ৫)
+    try:
+        # ইউজার যদি ৫.৭৯ লেখে, float() সেটাকে ৫.৭৯ করবে আর int() সেটাকে ৫ করে দেবে
+        amount = int(float(message.text))
+    except (ValueError, TypeError):
+        return await message.answer("❌ অনুগ্রহ করে সঠিক সংখ্যা লিখুন (যেমন: ১০০)")
+
+    user_id = message.from_user.id
+    
+    # ডাটাবেস থেকে ইউজারের বর্তমান তথ্য আনা
+    cursor.execute("SELECT balance, bkash_num, nagad_num, rocket_num, binance_id, recharge_num, withdraw_count FROM users WHERE user_id=?", (user_id,))
+    res = cursor.fetchone()
+    
+    if not res:
+        await state.finish()
+        return await message.answer("❌ ডাটাবেসে আপনার তথ্য পাওয়া যায়নি।")
+
+    balance, bkash, nagad, rocket, binance, recharge, wd_count = res
+    
+    # ব্যালেন্স চেক (দশমিক বাদ দিয়ে তুলনা করা হচ্ছে)
+    if amount > int(balance):
+        return await message.answer(f"❌ আপনার ব্যালেন্স পর্যাপ্ত নয়! বর্তমান: {int(balance)} ৳")
+    
+    # ২. স্টেট থেকে উইথড্র টাইপ (Recharge নাকি Send Money) নেওয়া
+    data = await state.get_data()
+    w_type = data.get('withdraw_type')
+
+    # ৩. কমিশন ও পরবর্তী উইথড্র সংখ্যা হিসাব (দশমিক ছাড়া)
+    commission = int(amount * 0.05)
+    next_wd_number = (wd_count or 0) + 1
+
+    # ৪. ইউজারের ব্যালেন্স আপডেট (ডাটাবেসে পূর্ণসংখ্যা হিসেবে সেভ হবে)
+    new_balance = int(balance - amount)
+    cursor.execute("UPDATE users SET balance = ?, withdraw_count = ? WHERE user_id = ?", (new_balance, next_wd_number, user_id))
+    db.commit()
+
+    # ৫. মেথড অনুযায়ী পেমেন্ট ডিটেইলস সাজানো (HTML ব্যবহার করা হয়েছে)
+    if w_type == "recharge":
+        method_details = f"📱 Recharge: <code>{recharge or 'Not Set'}</code>"
+        withdraw_title = "📱 নতুন রিচার্জ রিকোয়েস্ট!"
+    else:
+        method_details = (
+            f"🟢 bKash: <code>{bkash or 'Not Set'}</code>\n"
+            f"🟠 Nagad: <code>{nagad or 'Not Set'}</code>\n"
+            f"💜 Rocket: <code>{rocket or 'Not Set'}</code>\n"
+            f"🟡 Binance: <code>{binance or 'Not Set'}</code>"
+        )
+        withdraw_title = "💸 নতুন সেন্ড মানি রিকোয়েস্ট!"
+
+    user_name = f"@{message.from_user.username}" if message.from_user.username else "নেই"
+    
+    # অ্যাডমিনকে পাঠানোর জন্য মেসেজ ফরম্যাট
+    admin_text = (
+        f"<b>{withdraw_title}</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 ইউজার: {user_name}\n"
+        f"🆔 আইডি: <code>{user_id}</code>\n\n"
+        f"💵 উইথড্র পরিমাণ: <b>{amount} ৳</b>\n"
+        f"🎁 <b>রেফার কমিশন (৫%):</b> <code>{commission} ৳</code>\n"
+        f"📊 উইথড্র সংখ্যা: <code>{next_wd_number}/10</code>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏠 <b>পেমেন্ট ডিটেইলস:</b>\n"
+        f"{method_details}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"পেমেন্ট করে নিচের বাটনে ক্লিক করুন 👇"
+    )
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+        # callback_data তে commission পাঠানো হয়েছে অনুমোদনের পর যোগ করার জন্য
         types.InlineKeyboardButton("✅ Approve", callback_data=f"admin_payment_approve_{user_id}_{amount}_{commission}"),
         types.InlineKeyboardButton("❌ Reject", callback_data=f"admin_payment_reject_{user_id}_{amount}")
     )
 
-    # ৪. এরপর অ্যাডমিনকে মেসেজ পাঠানো
-    await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb, parse_mode="Markdown")
+    # অ্যাডমিনকে মেসেজ পাঠানো
+    try:
+        await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb, parse_mode="HTML")
+        await message.answer("✅ আপনার উইথড্র রিকোয়েস্ট সফলভাবে জমা হয়েছে!", reply_markup=main_menu())
+    except Exception as e:
+        # কোনো কারণে মেসেজ না গেলে ব্যালেন্স রিফান্ড করে দেওয়া
+        cursor.execute("UPDATE users SET balance = balance + ?, withdraw_count = withdraw_count - 1 WHERE user_id = ?", (amount, user_id))
+        db.commit()
+        await message.answer("❌ সিস্টেম এরর! অ্যাডমিনকে রিকোয়েস্ট পাঠানো যায়নি। আপনার টাকা রিফান্ড করা হয়েছে।")
     
-    # ইউজারকে কনফার্মেশন পাঠানো
-    await message.answer("✅ আপনার উইথড্র রিকোয়েস্ট জমা হয়েছে!", reply_markup=main_menu())
+    # কাজ শেষ, স্টেট ক্লিয়ার করা
     await state.finish()
-
-# ৪. এডমিন প্যানেল
+    
 # ==========================================
 @dp.message_handler(commands=['check_user'])
 async def check_user_details(message: types.Message):
@@ -2040,74 +2138,53 @@ async def get_overall_stats(message: types.Message):
 
 # ১. ইউজারের পেমেন্ট মেথড চেক করার কমান্ড
 @dp.message_handler(commands=['check_payment'], user_id=ADMIN_ID)
-async def check_user_payment(message: types.Message):
+async def admin_check_payment(message: types.Message):
     args = message.get_args()
-    if not args or not args.isdigit():
-        return await message.answer("⚠️ আইডি দিন। উদাহরণ: `/check_payment 12345678`")
-
-    target_id = int(args)
-    cursor.execute("""SELECT bkash_num, nagad_num, rocket_num, recharge_num, binance_id 
-                      FROM users WHERE user_id=?""", (target_id,))
-    res = cursor.fetchone()
-
-    if res:
-        bkash, nagad, rocket, recharge, binance = res
-        info_text = (
-            f"💳 **ইউজার পেমেন্ট ডিটেইলস (ID: `{target_id}`)**\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"📱 রিচার্জ নম্বর: `{recharge or 'সেট নেই'}`\n"
-            f"🟢 বিকাশ: `{bkash or 'সেট নেই'}`\n"
-            f"🟠 নগদ: `{nagad or 'সেট নেই'}`\n"
-            f"💜 রকেট: `{rocket or 'সেট নেই'}`\n"
-            f"🟡 বিন্যান্স ID: `{binance or 'সেট নেই'}`\n"
-            f"━━━━━━━━━━━━━━━━━━━━"
-        )
-        await message.answer(info_text, parse_mode="Markdown")
-    else:
-        await message.answer("❌ এই আইডি দিয়ে কোনো ইউজার পাওয়া যায়নি।")
-
-# ২. ইউজারের সকল ব্যালেন্স (মেইন, রেফার, পেন্ডিং) দেখার কমান্ড
-@dp.message_handler(commands=['check_balance'], user_id=ADMIN_ID)
-async def check_user_balance(message: types.Message):
-    args = message.get_args()
-    if not args or not args.isdigit():
-        return await message.answer("⚠️ আইডি দিন। উদাহরণ: `/check_balance 12345678`")
-
-    target_id = int(args)
-    cursor.execute("SELECT balance, refer_balance, pending_balance FROM users WHERE user_id=?", (target_id,))
-    res = cursor.fetchone()
-
-    if res:
-        main_bal, ref_bal, pend_bal = res
-        balance_text = (
-            f"💰 **ব্যালেন্স রিপোর্ট (ID: `{target_id}`)**\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"💵 মেইন ব্যালেন্স: `{main_bal:.2f} ৳`\n"
-            f"👥 রেফার ব্যালেন্স: `{ref_bal:.2f} ৳`\n"
-            f"⏳ পেন্ডিং ব্যালেন্স: `{pend_bal:.2f} ৳`\n"
-            f"━━━━━━━━━━━━━━━━━━━━"
-        )
-        await message.answer(balance_text, parse_mode="Markdown")
-    else:
-        await message.answer("❌ ইউজার পাওয়া যায়নি।")
-
-# ৩. ইউজারের মোট রেফারেল সংখ্যা দেখার কমান্ড
-@dp.message_handler(commands=['check_refer'], user_id=ADMIN_ID)
-async def check_user_refer(message: types.Message):
-    args = message.get_args()
-    if not args or not args.isdigit():
-        return await message.answer("⚠️ আইডি দিন। উদাহরণ: `/check_refer 12345678`")
-
-    target_id = int(args)
-    cursor.execute("SELECT referral_count FROM users WHERE user_id=?", (target_id,))
-    res = cursor.fetchone()
-
-    if res:
-        ref_count = res[0]
-        await message.answer(f"👤 **ইউজার আইডি:** `{target_id}`\n🎁 **মোট রেফারেল:** `{ref_count}` জন।", parse_mode="Markdown")
-    else:
-        await message.answer("❌ ইউজার পাওয়া যায়নি।")
+    if not args.isdigit(): 
+        return await message.answer("⚠️ আইডি দিন। উদাহরণ: `/check_payment 12345`", parse_mode="Markdown")
     
+    cursor.execute("SELECT bkash_num, nagad_num, rocket_num, recharge_num, binance_id FROM users WHERE user_id=?", (int(args),))
+    res = cursor.fetchone()
+    if res:
+        text = (f"💳 **ইউজার পেমেন্ট ইনফো (ID: {args})**\n\n"
+                f"📱 রিচার্জ: `{res[3] or 'নেই'}`\n🟢 বিকাশ: `{res[0] or 'নেই'}`\n"
+                f"🟠 নগদ: `{res[1] or 'নেই'}`\n💜 রকেট: `{res[2] or 'নেই'}`\n🟡 বিন্যান্স: `{res[4] or 'নেই'}`")
+        await message.answer(text, parse_mode="Markdown")
+    else:
+        await message.answer("❌ এই আইডির কোনো ইউজার পাওয়া যায়নি।")
+
+# ২. ইউজারের মেইন, রেফার এবং পেন্ডিং ব্যালেন্স চেক (দশমিক ছাড়া)
+@dp.message_handler(commands=['check_balance'], user_id=ADMIN_ID)
+async def admin_check_balance(message: types.Message):
+    args = message.get_args()
+    if not args.isdigit(): 
+        return await message.answer("⚠️ আইডি দিন।", parse_mode="Markdown")
+    
+    cursor.execute("SELECT balance, refer_balance, pending_balance FROM users WHERE user_id=?", (int(args),))
+    res = cursor.fetchone()
+    if res:
+        # ব্যালেন্স দেখানোর সময় int() ব্যবহার করা হয়েছে যাতে দশমিক না আসে
+        await message.answer(f"💰 **ব্যালেন্স রিপোর্ট (ID: {args})**\n\n"
+                             f"💵 মূল ব্যালেন্স: `{int(res[0])} ৳`\n"
+                             f"👥 রেফার ব্যালেন্স: `{int(res[1])} ৳`\n"
+                             f"⏳ পেন্ডিং ব্যালেন্স: `{int(res[2])} ৳`", parse_mode="Markdown")
+    else:
+        await message.answer("❌ ইউজার পাওয়া যায়নি।")
+
+# ৩. ইউজারের মোট সফল রেফারেল সংখ্যা দেখার কমান্ড
+@dp.message_handler(commands=['check_refer'], user_id=ADMIN_ID)
+async def admin_check_referral(message: types.Message):
+    args = message.get_args()
+    if not args.isdigit(): 
+        return await message.answer("⚠️ আইডি দিন।", parse_mode="Markdown")
+    
+    cursor.execute("SELECT referral_count FROM users WHERE user_id=?", (int(args),))
+    res = cursor.fetchone()
+    if res:
+        await message.answer(f"👤 **ID:** `{args}`\n👥 **মোট সফল রেফার:** `{res[0]}` জন", parse_mode="Markdown")
+    else:
+        await message.answer("❌ ইউজার পাওয়া যায়নি।")
+
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
