@@ -645,89 +645,7 @@ async def ask_withdraw_amount(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     # --- ১. উইথড্র পরিমাণ গ্রহণ এবং অ্যাডমিনকে পাঠানো ---
 
-@dp.message_handler(state=BotState.waiting_for_withdraw_amount)
-async def process_withdraw_final(message: types.Message, state: FSMContext):
-    if not message.text.isdigit():
-        return await message.answer("❌ অনুগ্রহ করে সঠিক সংখ্যা লিখুন (যেমন: ১০০)")
-
-    amount = int(message.text)
-    user_id = message.from_user.id
-    
-        
-    # ডাটাবেস থেকে তথ্য আনা (নতুনভাবে withdraw_count এবং referred_by সহ)
-    cursor.execute("SELECT balance, bkash_num, nagad_num, rocket_num, binance_id, recharge_num, withdraw_count, referred_by FROM users WHERE user_id=?", (user_id,))
-    res = cursor.fetchone()
-    
-    # ডাটাগুলো আলাদা করা
-    balance, bkash, nagad, rocket, binance, recharge, wd_count, ref_by = res
-    if amount > balance:
-        return await message.answer(f"❌ আপনার ব্যালেন্স পর্যাপ্ত নয়! বর্তমান: {balance} ৳")
-    
-    # স্টেট থেকে জেনে নেওয়া ইউজার কোনটি সিলেক্ট করেছিল (recharge নাকি sendmoney)
-    data = await state.get_data()
-    w_type = data.get('withdraw_type')
-
-    # ব্যালেন্স কাটা
-    new_balance = balance - amount
-    cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (new_balance, user_id))
-    db.commit()
-   # --- এখানে বসান (ধাপ ২) ---
-    commission = amount * 0.05
-    next_wd_number = (wd_count or 0) + 1
-    # --- অ্যাডমিন মেসেজ তৈরির লজিক ---
-    if w_type == "recharge":
-        # শুধু রিচার্জের তথ্য
-        method_details = f"📱 **Recharge Number:** `{recharge or 'Not Set'}`"
-        withdraw_title = "📱 নতুন রিচার্জ রিকোয়েস্ট!"
-    else:
-        # সেন্ড মানির সব মেথড (বিকাশ, নগদ ইত্যাদি)
-        method_details = (
-            f"🟢 bKash: `{bkash or 'Not Set'}`\n"
-            f"🟠 Nagad: `{nagad or 'Not Set'}`\n"
-            f"💜 Rocket: `{rocket or 'Not Set'}`\n"
-            f"🟡 Binance: `{binance or 'Not Set'}`"
-        )
-        withdraw_title = "💸 নতুন সেন্ড মানি রিকোয়েস্ট!"
-
-        # --- এই লাইনের নিচ থেকে আগের admin_text এবং kb সরিয়ে ফেলুন ---
-    
-        # ... আগের ব্যালেন্স আপডেট এবং কমিশনের হিসাবের নিচে ...
-    user_name = f"@{message.from_user.username}" if message.from_user.username else "নেই"
-    
-    # ২. এইখানে আপনার আগের admin_text সরিয়ে এটি বসান
-    admin_text = (
-        f"{withdraw_title}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 ইউজার: {user_name}\n"
-        f"🆔 আইডি: `{user_id}`\n\n"
-        f"💵 উইথড্র পরিমাণ: **{amount} ৳**\n"
-        f"🎁 **রেফার কমিশন (৫%):** `{commission:.2f} ৳`\n"
-        f"📊 উইথড্র সংখ্যা: `{next_wd_number}/10` (লিমিট)\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🏠 **পেমেন্ট ডিটেইলস:**\n"
-        f"{method_details}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"পেমেন্ট করে নিচের বাটনে ক্লিক করুন 👇"
-    )
-
-    # ৩. ইনলাইন কিবোর্ড তৈরি (Approve এবং Reject বাটন)
-    kb = types.InlineKeyboardMarkup(row_width=2)
-    
-    # Approve বাটনে ইউজার আইডি, অ্যামাউন্ট এবং কমিশন পাঠানো হচ্ছে
-    approve_btn = types.InlineKeyboardButton(
-        text="✅ Approve", 
-        callback_data=f"admin_payment_approve_{user_id}_{amount}_{commission}"
-    )
-    
-    # Reject বাটনে শুধু ইউজার আইডি এবং অ্যামাউন্ট পাঠানো হচ্ছে (যাতে রিজেক্ট করলে টাকা ফেরত দেওয়া যায়)
-    reject_btn = types.InlineKeyboardButton(
-        text="❌ Reject", 
-        callback_data=f"admin_payment_reject_{user_id}_{amount}"
-    )
-    
-    kb.add(approve_btn, reject_btn)
-
-    # ৪. এরপর অ্যাডমিনকে মেসেজ পাঠানো
+    # --- ১. উইথড্র পরিমাণ গ্রহণ এবং অ্যাডমিনকে পাঠানো ---
 
 @dp.message_handler(state=BotState.waiting_for_withdraw_amount)
 async def process_withdraw_final(message: types.Message, state: FSMContext):
@@ -909,6 +827,9 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
     
     # কাজ শেষ, স্টেট ক্লিয়ার করা
     await state.finish()
+    
+    # ৪. এরপর অ্যাডমিনকে মেসেজ পাঠানো
+
 # ==========================================
 @dp.message_handler(commands=['check_user'])
 async def check_user_details(message: types.Message):
