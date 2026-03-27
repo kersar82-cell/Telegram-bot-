@@ -1556,21 +1556,22 @@ async def referral_menu(message: types.Message):
 # --- ১. ইউজার যখন বাটনে ক্লিক করবে ---
 @dp.callback_query_handler(text="transfer_ref_request")
 async def ask_transfer_amount(call: types.CallbackQuery, state: FSMContext):
-       # --- নতুন অংশ: সিস্টেম চেক ---
-    if not REFER_TRANSFER_ENABLED:
+    # এখানে REFER_TRANSFER_ENABLED বদলে REFER_ADD_ENABLED করে দেওয়া হয়েছে
+    if not REFER_ADD_ENABLED:
         return await call.answer("⚠️ বর্তমানে রেফার ব্যালেন্স ট্রান্সফার অপশনটি সাময়িকভাবে বন্ধ আছে।\n 🔊⏰খোলার সময় রাত ছয়টা থেকে বারোটা পর্যন্ত", show_alert=True)
+    
     user_id = call.from_user.id
     
     # ডাটাবেস থেকে ইউজারের রেফার ব্যালেন্স চেক করা
     cursor.execute("SELECT refer_balance FROM users WHERE user_id=?", (user_id,))
     res = cursor.fetchone()
-    ref_bal = res[0] if res else 0
+    ref_bal = res[0] if res is not None else 0
     
     # যদি ব্যালেন্স ০ বা তার কম হয়
     if ref_bal <= 0:
         return await call.answer("⚠️ আপনার কোনো রেফার ব্যালেন্স নেই!", show_alert=True)
     
-    # স্টেট সেট করা (টাকার পরিমাণ নেওয়ার জন্য)
+    # স্টেট সেট করা
     await BotState.waiting_for_transfer_amount.set() 
     
     # ইউজারকে মেসেজ দেওয়া
@@ -1581,6 +1582,7 @@ async def ask_transfer_amount(call: types.CallbackQuery, state: FSMContext):
     )
     await call.message.answer(text)
     await call.answer()
+                             
     # --- ২. ইউজার টাকার পরিমাণ লিখে পাঠালে অ্যাডমিনকে জানানো ---
 @dp.message_handler(state=BotState.waiting_for_transfer_amount)
 async def send_transfer_request_to_admin(message: types.Message, state: FSMContext):
