@@ -446,28 +446,42 @@ async def select_method_type(call: types.CallbackQuery):
     )
     await call.message.edit_text("আপনি কোন মাধ্যমে নম্বর সেভ করতে চান? 👇", reply_markup=kb)
 # --- ১. মোবাইল রিচার্জ নম্বর সেভ করা ---
+# --- ১. মোবাইল রিচার্জ নম্বর সেভ করা (সংশোধিত) ---
 @dp.message_handler(state=BotState.waiting_for_recharge_num)
 async def save_recharge_db(message: types.Message, state: FSMContext):
     num = message.text
     user_id = message.from_user.id
     username = message.from_user.username or "No Username"
+    full_name = message.from_user.full_name
     
     # ডাটাবেসে সেভ করা
     cursor.execute("UPDATE users SET recharge_num = ? WHERE user_id = ?", (num, user_id))
     db.commit()
     
-    # অ্যাডমিনকে জানানো
+    # অ্যাডমিনকে জানানো (Markdown এরর এড়াতে নিরাপদভাবে সাজানো)
     admin_text = (
-        f"📱 **নতুন রিচার্জ নম্বর সেট!**\n"
+        f"📱 নতুন রিচার্জ নম্বর সেট!\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 ইউজার: {message.from_user.full_name}\n"
-        f"🆔 আইডি: `{user_id}`\n"
+        f"👤 ইউজার: {full_name}\n"
+        f"🆔 আইডি: {user_id}\n"
         f"🔗 ইউজারনেম: @{username}\n"
-        f"📞 নম্বর: `{num}`"
+        f"📞 নম্বর: {num}"
     )
-    await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
     
-    await message.answer(f"✅ আপনার **Mobile Recharge** নম্বর `{num}` সফলভাবে সেভ হয়েছে!", reply_markup=main_menu())
+    try:
+        # parse_mode সরিয়ে দেওয়া হয়েছে যাতে নামের মাঝের আন্ডারস্কোর (_) বট ক্র্যাশ না করে
+        await bot.send_message(ADMIN_ID, admin_text)
+    except Exception as e:
+        print(f"অ্যাডমিনকে মেসেজ পাঠাতে এরর: {e}")
+    
+    # ইউজারকে রিপ্লাই দেওয়া (এখানে বোল্ড করার জন্য HTML মোড ব্যবহার করা নিরাপদ)
+    await message.answer(
+        f"✅ আপনার <b>Mobile Recharge</b> নম্বর <code>{num}</code> সফলভাবে সেভ হয়েছে!", 
+        reply_markup=main_menu(),
+        parse_mode="HTML"
+    )
+    
+    # স্টেট অবশ্যই ফিনিশ করতে হবে যাতে ইউজার পরবর্তী কমান্ড দিতে পারে
     await state.finish()
 
 # --- ২. মোবাইল রিচার্জ নম্বর নেওয়ার জন্য ---
@@ -496,31 +510,7 @@ async def ask_for_num(call: types.CallbackQuery, state: FSMContext):
     await BotState.waiting_for_method_num.set()
     await call.message.answer(f"🔢 আপনার **{provider.upper()}** নম্বর বা ID টি লিখুন:")
     await call.answer()
-    # --- ১. মোবাইল রিচার্জ নম্বর সেভ করা ---
-@dp.message_handler(state=BotState.waiting_for_recharge_num)
-async def save_recharge_db(message: types.Message, state: FSMContext):
-    num = message.text
-    user_id = message.from_user.id
-    username = message.from_user.username or "No Username"
     
-    # ডাটাবেসে সেভ করা
-    cursor.execute("UPDATE users SET recharge_num = ? WHERE user_id = ?", (num, user_id))
-    db.commit()
-    
-    # অ্যাডমিনকে জানানো
-    admin_text = (
-        f"📱 **নতুন রিচার্জ নম্বর সেট!**\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 ইউজার: {message.from_user.full_name}\n"
-        f"🆔 আইডি: `{user_id}`\n"
-        f"🔗 ইউজারনেম: @{username}\n"
-        f"📞 নম্বর: `{num}`"
-    )
-    await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
-    
-    await message.answer(f"✅ আপনার **Mobile Recharge** নম্বর `{num}` সফলভাবে সেভ হয়েছে!", reply_markup=main_menu())
-    await state.finish()
-
 # --- ২. সেন্ড মানি (বিকাশ/নগদ/রকেট/বাইনান্স) নম্বর সেভ করা ---
 @dp.message_handler(state=BotState.waiting_for_method_num)
 async def save_sendmoney_db(message: types.Message, state: FSMContext):
