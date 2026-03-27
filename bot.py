@@ -2201,7 +2201,41 @@ async def admin_check_referral(message: types.Message):
         await message.answer(f"👤 **ID:** `{args}`\n👥 **মোট সফল রেফার:** `{res[0]}` জন", parse_mode="Markdown")
     else:
         await message.answer("❌ ইউজার পাওয়া যায়নি।")
+# এটি ফাইলের শেষে যোগ করুন
+@dp.callback_query_handler(lambda c: c.data == 'add_to_main')
+async def process_add_to_main(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    
+    # ডাটাবেস থেকে ইউজারের বর্তমান রেফার ব্যালেন্স কত আছে তা দেখা
+    cursor.execute("SELECT refer_balance FROM users WHERE user_id=?", (user_id,))
+    result = cursor.fetchone()
+    
+    # সুইচটি অন আছে কিনা চেক করা (উপরে আপনার দেওয়া REFER_ADD_ENABLED = True)
+    if not REFER_ADD_ENABLED:
+        return await bot.answer_callback_query(callback_query.id, text="❌ এই সুবিধাটি বর্তমানে বন্ধ আছে।", show_alert=True)
 
+    if result and result[0] > 0:
+        amount = int(result[0])
+        
+        # ১. মেইন ব্যালেন্সে (balance) টাকা যোগ করা 
+        # ২. রেফার ব্যালেন্স (refer_balance) ০ করে দেওয়া
+        cursor.execute("UPDATE users SET balance = balance + ?, refer_balance = 0 WHERE user_id = ?", (amount, user_id))
+        db.commit()
+        
+        # সফল হওয়ার নোটিফিকেশন দেখানো
+        await bot.answer_callback_query(callback_query.id, text=f"✅ সফল! {amount} ৳ মেইন ব্যালেন্সে যোগ হয়েছে।", show_alert=True)
+        
+        # আগের মেসেজটি এডিট করে আপডেট ব্যালেন্স দেখানো
+        await bot.edit_message_text(
+            chat_id=user_id,
+            message_id=callback_query.message.message_id,
+            text=f"✅ আপনার {amount} ৳ সফলভাবে মেইন ব্যালেন্সে যোগ করা হয়েছে।\n\nএখন আপনার রেফার ব্যালেন্স: 0 ৳",
+            reply_markup=None # কাজ শেষ হলে বাটন সরিয়ে ফেলা
+        )
+    else:
+        # ব্যালেন্স ০ থাকলে এই মেসেজ আসবে
+        await bot.answer_callback_query(callback_query.id, text="❌ আপনার রেফার ব্যালেন্সে কোনো টাকা নেই।", show_alert=True)
+    
 if __name__ == '__main__':
     keep_alive()
     executor.start_polling(dp, skip_updates=True)
