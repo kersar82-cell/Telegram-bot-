@@ -236,13 +236,13 @@ async def start(message: types.Message, state: FSMContext):
 
     welcome_text = """📢 আজকের কাজের আপডেট এবং রেট লিস্ট 📢
 
-💸 Instagram 2FA: ২.৬০ ৳
+💸 Instagram 2FA: ৩ ৳🎉
 
-💸 Instagram Cookies: ৪.০০ ৳
+💸 Instagram Cookies: ৪.০০ ৳🎉
 
-💸 Instagram Mother: ৭.০০ ৳
+💸 Instagram Mother: ৭.০০ ৳🎉
 
-💸 Facebook 00 Fnd 2FA: ৫.৮০ ৳
+💸 Facebook 00 Fnd 2FA: ৫.৮০ ৳🎉
 """
 
     # ৪. ইউজারকে মেসেজ পাঠানো
@@ -370,7 +370,7 @@ async def get_2fa(message: types.Message, state: FSMContext):
     elif category == "IG Mother Account":
         amount_to_add = 7
     elif category == "IG 2fa":
-        amount_to_add = 2.60
+        amount_to_add = 3
 
     # শুধুমাত্র সিঙ্গেল আইডি জমা দিলে ব্যালেন্স আপডেট হবে
         # মেইন ব্যালেন্সের বদলে পেন্ডিং ব্যালেন্সে টাকা জমা হবে
