@@ -1584,13 +1584,15 @@ async def ask_transfer_amount(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
                              
     # --- ২. ইউজার টাকার পরিমাণ লিখে পাঠালে অ্যাডমিনকে জানানো ---
+# এটি টাকা রিসিভ করার হ্যান্ডলার
 @dp.message_handler(state=BotState.waiting_for_transfer_amount)
 async def send_transfer_request_to_admin(message: types.Message, state: FSMContext):
     # ইনপুটটি সংখ্যা কি না চেক করা
-    if not message.text.isdigit():
-        return await message.answer("❌ অনুগ্রহ করে সঠিক সংখ্যা লিখুন (যেমন: ৫০)")
+    input_text = message.text
+    if not input_text.replace('.', '', 1).isdigit():
+        return await message.answer("❌ অনুগ্রহ করে সঠিক সংখ্যা লিখুন (যেমন: ৫০ বা ৫০.৫)")
 
-    amount = float(message.text)
+    amount = float(input_text)
     user_id = message.from_user.id
     
     # ডাটাবেস থেকে ইউজারের বর্তমান রেফার ব্যালেন্স চেক করা
@@ -1598,46 +1600,40 @@ async def send_transfer_request_to_admin(message: types.Message, state: FSMConte
     res = cursor.fetchone()
     current_ref_bal = res[0] if res else 0
 
-    # ইউজারের কি যথেষ্ট ব্যালেন্স আছে?
+    # চেক করা হচ্ছে ইউজারের পর্যাপ্ত ব্যালেন্স আছে কি না
     if amount > current_ref_bal:
+        await state.finish() # ব্যালেন্স না থাকলে স্টেট বন্ধ করে দেওয়া ভালো
         return await message.answer(f"❌ আপনার পর্যাপ্ত রেফার ব্যালেন্স নেই!\nবর্তমান ব্যালেন্স: `{current_ref_bal:.2f} ৳`")
 
-    # পরিমাণ যদি ০ এর কম হয়
     if amount <= 0:
         return await message.answer("❌ সর্বনিম্ন ১ টাকা ট্রান্সফার করা যাবে।")
 
-    # অ্যাডমিনের জন্য কিবোর্ড তৈরি (Approve/Reject বাটন)
+    # অ্যাডমিনের জন্য বাটন (ADMIN_ID আপনার ওপরে ডিফাইন করা থাকতে হবে)
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
         types.InlineKeyboardButton("✅ Add Money", callback_data=f"ref_adm_add_{user_id}_{amount}"),
         types.InlineKeyboardButton("❌ Reject", callback_data=f"ref_adm_rej_{user_id}_{amount}")
     )
 
-    # অ্যাডমিনকে পাঠানোর মেসেজ
     admin_text = (
         f"🔄 **নতুন ব্যালেন্স ট্রান্সফার রিকোয়েস্ট!**\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"👤 নাম: {message.from_user.full_name}\n"
         f"🆔 আইডি: `{user_id}`\n"
-        f"🔗 ইউজারনেম: @{message.from_user.username or 'No_Username'}\n"
         f"💰 পরিমাণ: **{amount:.2f} ৳**\n"
-        f"🏠 মেথড: **Refer to Main Balance**\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"আপনি কি এই টাকা মেইন ব্যালেন্সে এড করতে চান? 👇"
+        f"অ্যাপ্রুভ করতে নিচের বাটনে ক্লিক করুন।"
     )
 
-    # অ্যাডমিনকে মেসেজ পাঠানো
-    await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb, parse_mode="Markdown")
+    try:
+        await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb, parse_mode="Markdown")
+        await message.answer(f"✅ আপনার **{amount:.2f} ৳** ট্রান্সফার রিকোয়েস্ট অ্যাডমিনের কাছে পাঠানো হয়েছে।\n⏳ অ্যাডমিন এপ্রুভ করলে মেইন ব্যালেন্সে যোগ হবে।")
+    except Exception as e:
+        await message.answer("⚠️ অ্যাডমিনকে মেসেজ পাঠানো সম্ভব হয়নি।")
     
-    # ইউজারকে জানানো
-    await message.answer(
-        f"✅ আপনার **{amount:.2f} ৳** ট্রান্সফার রিকোয়েস্ট অ্যাডমিনের কাছে পাঠানো হয়েছে।\n"
-        f"⏳ অ্যাডমিন এপ্রুভ করলে আপনার মেইন ব্যালেন্সে টাকা যোগ হয়ে যাবে।",
-        reply_markup=main_menu() # আপনার মেইন মেনু ফাংশনটি কল করুন
-    )
-    
-    # স্টেট শেষ করা
+    # কাজ শেষ হলে স্টেট ক্লিয়ার করুন
     await state.finish()
+
     # --- ৫. অ্যাডমিন যখন ব্যালেন্স ট্রান্সফার এপ্রুভ বা রিজেক্ট করবে ---
 @dp.callback_query_handler(lambda c: c.data.startswith('ref_adm_'), user_id=ADMIN_ID)
 async def handle_transfer_approval(call: types.CallbackQuery):
