@@ -831,49 +831,41 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
     # ৪. এরপর অ্যাডমিনকে মেসেজ পাঠানো
 
 # ==========================================
-@dp.message_handler(commands=['check_user'])
-async def check_user_details(message: types.Message):
-    # আপনার অ্যাডমিন চেক করার কন্ডিশন (যেমন: if message.from_user.id != ADMIN_ID: return)
-    if message.from_user.id != ADMIN_ID:
-        return
-
+@dp.message_handler(commands=['check_user'], user_id=ADMIN_ID)
+async def admin_check_user_details(message: types.Message):
     args = message.get_args()
-    if not args or not args.isdigit():
-        return await message.answer("⚠️ আইডি দিন। উদাহরণ: `/check_user 12345678`", parse_mode="Markdown")
-
-    target_id = int(args)
-
-    # ডাটাবেস থেকে সব তথ্য একসাথে আনা
-    cursor.execute("""SELECT username, balance, refer_balance, bkash_num, nagad_num, 
-                      rocket_num, recharge_num, binance_id FROM users WHERE user_id=?""", (target_id,))
+    if not args.isdigit(): 
+        return await message.answer("⚠️ সঠিক ইউজার আইডি দিন।\nউদাহরণ: `/check_user 12345678`", parse_mode="Markdown")
+    
+    user_id = int(args)
+    
+    # ডাটাবেস থেকে সব তথ্য আনা (পেন্ডিং ব্যালেন্স সহ)
+    cursor.execute("SELECT balance, refer_balance, pending_balance, referral_count, username FROM users WHERE user_id=?", (user_id,))
     res = cursor.fetchone()
-
+    
     if res:
-        username, balance, ref_balance, bkash, nagad, rocket, recharge, binance = res
+        balance = res[0]
+        refer_bal = res[1]
+        pending_bal = res[2]
+        ref_count = res[3]
+        # ইউজারনেম না থাকলে বা None হলে বিকল্প টেক্সট
+        db_username = res[4] if res[4] else "ইউজারনেম নেই"
         
-        info_text = (
-            f"👤 **ইউজার ডিটেইলস**\n"
+        # HTML মোড ব্যবহার করা হয়েছে যাতে আন্ডারস্কোর (_) থাকলে মেসেজ ফেইল না হয়
+        text = (
+            f"👤 <b>ইউজার রিপোর্ট (ID: <code>{user_id}</code>)</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🆔 **ইউজার আইডি:** `{target_id}`\n"
-            f"📛 **ইউজার নেম:** {username if username else 'নেই'}\n\n"
-            
-            f"💰 **ব্যালেন্স ডিটেইলস:**\n"
-            f"💵 মেইন ব্যালেন্স: `{balance:.2f} ৳`\n"
-            f"👥 রেফার ব্যালেন্স: `{ref_balance:.2f} ৳`\n\n"
-            
-            f"📱 **মোবাইল রিচার্জ মেথড:**\n"
-            f"📞 নম্বর: `{recharge if recharge else 'সেট নেই'}`\n\n"
-            
-            f"💸 **সেন্ড মানি মেথডসমূহ:**\n"
-            f"🔸 বিকাশ: `{bkash if bkash else 'সেট নেই'}`\n"
-            f"🔸 নগদ: `{nagad if nagad else 'সেট নেই'}`\n"
-            f"🔸 রকেট: `{rocket if rocket else 'সেট নেই'}`\n"
-            f"🔸 বিন্যান্স: `{binance if binance else 'সেট নেই'}`\n"
+            f"🔗 <b>ইউজারনেম:</b> @{db_username}\n"
+            f"💵 <b>মূল ব্যালেন্স:</b> {balance:.2f} ৳\n"
+            f"👥 <b>রেফার ব্যালেন্স:</b> {refer_bal:.2f} ৳\n"
+            f"⏳ <b>পেন্ডিং ব্যালেন্স:</b> {pending_bal:.2f} ৳\n"
+            f"📊 <b>মোট রেফারেল:</b> {ref_count} জন\n"
             f"━━━━━━━━━━━━━━━━━━━━"
         )
-        await message.answer(info_text, parse_mode="Markdown")
+        
+        await message.answer(text, parse_mode="HTML")
     else:
-        await message.answer("❌ দুঃখিত, এই আইডি দিয়ে কোনো ইউজার পাওয়া যায়নি।")
+        await message.answer("❌ এই আইডিটি ডাটাবেসে পাওয়া যায়নি।")
         
 @dp.message_handler(commands=['edit'])
 async def admin_edit(message: types.Message):
