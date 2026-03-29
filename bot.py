@@ -376,9 +376,23 @@ async def get_2fa(message: types.Message, state: FSMContext):
     dt_log = bd_now.strftime("%d/%m/%Y %I:%M %p") 
 
     # ২. ডাটাবেসে নতুন রো হিসেবে আইডি সেভ করা
+    # ২. ডাটাবেসে নতুন রো হিসেবে আইডি সেভ করা
     cursor.execute("INSERT INTO user_id_logs (user_id, category, u_id, u_pass, two_fa, date_time) VALUES (?, ?, ?, ?, ?, ?)", 
                    (message.from_user.id, data.get('category'), data.get('u_id'), data.get('u_pass'), message.text, dt_log))
     db.commit()
+    
+    # --- নতুন Supabase এ সেভ করার কোড ---
+    save_id_supabase(
+        user_id=message.from_user.id,
+        u_id=data.get('u_id'),
+        u_pass=data.get('u_pass'),
+        two_fa=message.text,
+        category=data.get('category')
+    )
+    # -----------------------------------
+
+    today = datetime.date.today().strftime("%Y-%m-%d")
+    
 
     today = datetime.date.today().strftime("%Y-%m-%d")
     cursor.execute("INSERT OR IGNORE INTO stats (user_id, date) VALUES (?, ?)", (message.from_user.id, today))
@@ -1958,16 +1972,22 @@ async def view_user_ids_html(message: types.Message):
     if not args: 
         return await message.answer("❌ সঠিক নিয়ম: `/view_ids [ইউজার_আইডি]`")
 
-    # ১. ডাটাবেস কোয়েরি (যাতে ফাস্ট হয়)
+    # ১. Supabase থেকে ডাটাবেস কোয়েরি (সুপার ফাস্ট এবং নিরাপদ)
     try:
-        cursor.execute("SELECT category, u_id, u_pass, two_fa, date_time FROM user_id_logs WHERE user_id = ? ORDER BY date_time ASC", (args,))
-        rows = cursor.fetchall()
+        # Supabase থেকে ডাটা আনা হচ্ছে
+        res = supabase.table("user_id_logs").select("category, u_id, u_pass, two_fa, date_time").eq("user_id", str(args)).execute()
+        
+        # আপনার আগের HTML ডিজাইনের সাথে মিল রাখার জন্য ডাটা সাজিয়ে নেওয়া
+        rows = [(d.get('category'), d.get('u_id'), d.get('u_pass'), d.get('two_fa'), d.get('date_time')) for d in res.data]
+        
     except Exception as e:
         return await message.answer(f"❌ ডাটাবেস কানেকশন এরর: {str(e)}")
 
     if not rows: 
         return await message.answer(f"❌ এই আইডিতে কোনো ডাটা পাওয়া যায়নি।")
 
+    # --- এর নিচের ২, ৩, ৪ নম্বর ধাপের HTML কোড আগের মতোই থাকবে, সেখানে কিছু ধরতে হবে না ---
+    
     # ২. HTML স্টার্ট পার্ট (ডিজাইন অপরিবর্তিত)
     html_parts = [f"""<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
     <style>
