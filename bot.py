@@ -125,7 +125,10 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS user_id_logs
                   (user_id INTEGER, category TEXT, u_id TEXT, u_pass TEXT, two_fa TEXT, date_time TEXT)''')
 db.commit()
 
-
+# user_id এর ওপর একটি ইনডেক্স তৈরি করা
+cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_id ON user_id_logs (user_id)")
+db.commit()
+    
 class BotState(StatesGroup):
     waiting_for_file = State()
     waiting_for_address = State()
@@ -1927,24 +1930,23 @@ async def edit_pending_balance(message: types.Message):
     else:
         await message.answer("❌ এই ইউজার আইডিটি ডাটাবেসে পাওয়া যায়নি।")
 import io
-
 @dp.message_handler(commands=['view_ids'], user_id=ADMIN_ID)
 async def view_user_ids_html(message: types.Message):
     args = message.get_args()
     if not args: 
         return await message.answer("❌ সঠিক নিয়ম: `/view_ids [ইউজার_আইডি]`")
 
-    # ডাটাবেস থেকে দ্রুত ডাটা আনার জন্য ইনডেক্স ব্যবহার করা ভালো (যদি না থাকে)
+    # ১. ডাটাবেস কোয়েরি (যাতে ফাস্ট হয়)
     try:
         cursor.execute("SELECT category, u_id, u_pass, two_fa, date_time FROM user_id_logs WHERE user_id = ? ORDER BY date_time ASC", (args,))
         rows = cursor.fetchall()
     except Exception as e:
-        return await message.answer(f"❌ ডাটাবেস এরর: {str(e)}")
+        return await message.answer(f"❌ ডাটাবেস কানেকশন এরর: {str(e)}")
 
     if not rows: 
-        return await message.answer(f"❌ ডাটা পাওয়া যায়নি।")
+        return await message.answer(f"❌ এই আইডিতে কোনো ডাটা পাওয়া যায়নি।")
 
-    # HTML স্টার্ট অংশ
+    # ২. HTML স্টার্ট পার্ট (ডিজাইন অপরিবর্তিত)
     html_parts = [f"""<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
     <style>
         body{{font-family:sans-serif;background:#f4f4f9;padding:5px}}
@@ -1961,22 +1963,27 @@ async def view_user_ids_html(message: types.Message):
     <script>
         function cp(c){{
             let d="";const el=document.getElementsByClassName(c);
-            for(let e of el)d+=e.innerText+"\\n";
-            const t=document.createElement('textarea');t.value=d.trim();document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);
-            const x=document.getElementById("s");x.className="toast show";setTimeout(()=>{{x.className="toast"}},2000);
+            if(el.length === 0) return;
+            for(let e of el) d += e.innerText + "\\n";
+            const t=document.createElement('textarea');
+            t.value=d.trim();document.body.appendChild(t);t.select();
+            document.execCommand('copy');document.body.removeChild(t);
+            const x=document.getElementById("s");
+            x.className="toast show";setTimeout(()=>{{x.className="toast"}},2000);
         }}
-    </script></head><body><h3>Report: {args}</h3><div id="s" class="toast">কপি হয়েছে! ✅</div>"""]
+    </script></head><body><h3>Report ID: {args}</h3><div id="s" class="toast">কপি হয়েছে! ✅</div>"""]
 
-    # ক্যাটাগরি অনুযায়ী গ্রুপ করা (NoneType সেফটি সহ)
+    # ৩. ডাটা প্রসেসিং (NoneType Safety)
     cat_groups = {}
     for r in rows:
-        cat_name = str(r[0]) if r[0] is not None else "Uncategorized"
+        # যদি ক্যাটাগরি না থাকে তবে 'Unknown' দেখাবে
+        cat_name = str(r[0]) if r[0] is not None else "General"
         cat_groups.setdefault(cat_name, []).append(r)
 
-    # কন্টেন্ট তৈরি (String List ব্যবহার করা হয়েছে স্পিড বাড়ানোর জন্য)
     for cat, items in cat_groups.items():
-        # ক্যাটাগরিতে স্পেশাল ক্যারেক্টার থাকলে JS এরর এড়াতে ID ক্লিন করা
-        s_cat = "".join(filter(str.isalnum, cat)) or "cat" + str(hash(cat))[:5]
+        # ৪. কপি বাটন যাতে নষ্ট না হয় (Unique ID জেনারেশন)
+        import hashlib
+        s_cat = hashlib.md5(cat.encode()).hexdigest()[:8]
         
         content = f"""<div class='b'><div class='t'>{cat} ({len(items)})</div>
         <div class='g'>
@@ -1987,11 +1994,11 @@ async def view_user_ids_html(message: types.Message):
         <table><tr><th>No</th><th>User</th><th>Pass</th><th>2FA</th><th>Time</th></tr>"""
         
         for i, item in enumerate(items, 1):
-            # প্রতিটি ফিল্ডকে string এ কনভার্ট করা হয়েছে যাতে None থাকলে ক্র্যাশ না করে
-            u_id = str(item[1]) if item[1] else "N/A"
-            u_pass = str(item[2]) if item[2] else "N/A"
-            u_2fa = str(item[3]) if item[3] else "N/A"
-            u_time = str(item[4]) if item[4] else "N/A"
+            # ৫. প্রতিটি ভ্যালু চেক করা (যাতে কোনো চিহ্ন বা খালি ঘর থাকলে ক্র্যাশ না করে)
+            u_id = str(item[1]) if item[1] else "-"
+            u_pass = str(item[2]) if item[2] else "-"
+            u_2fa = str(item[3]) if item[3] else "-"
+            u_time = str(item[4]) if item[4] else "-"
             
             content += f"<tr><td>{i}</td><td class='u-{s_cat}'>{u_id}</td><td class='p-{s_cat}'>{u_pass}</td><td class='t-{s_cat}'>{u_2fa}</td><td style='color:#888'>{u_time}</td></tr>"
         
@@ -2000,17 +2007,16 @@ async def view_user_ids_html(message: types.Message):
 
     html_parts.append("</body></html>")
     
-    # সবগুলো পার্টকে একসাথে জয়েন করা (এটি += এর চেয়ে অনেক দ্রুত)
+    # ৬. সুপার ফাস্ট টেক্সট জয়েনিং
     full_html = "".join(html_parts)
     
     try:
         file_data = io.BytesIO(full_html.encode('utf-8'))
-        file_data.name = f"r_{args}.html"
-        await message.reply_document(file_data, caption=f"📊 `{args}` এর কলাম রিপোর্ট।")
+        file_data.name = f"Report_{args}.html"
+        await message.reply_document(file_data, caption=f"📊 `{args}` এর রিপোর্ট জেনারেট হয়েছে।")
     except Exception as e:
-        await message.answer(f"❌ ফাইল পাঠাতে সমস্যা হয়েছে: {str(e)}")
-
-
+        await message.answer(f"❌ ফাইল সেন্ডিং এরর: {str(e)}")
+    
 @dp.message_handler(commands=['del_user_data'], user_id=ADMIN_ID)
 async def delete_user_all_ids(message: types.Message):
     # কমান্ডটি হবে: /del_user_data [ইউজার_আইডি]
