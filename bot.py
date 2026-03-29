@@ -7,6 +7,28 @@ from aiogram import Bot, Dispatcher, executor, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
+from supabase import create_client, Client
+
+# আপনার ডাটাবেস তথ্য
+SUPABASE_URL = "https://mxxxnwnberhhnpgfmzml.supabase.co"
+SUPABASE_KEY = "sb_publishable_NhIUA5uUQMKB7wBhxH2oxg_myQWFWJ0"
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+def save_id_supabase(user_id, u_id, u_pass, two_fa, category):
+    try:
+        data = {
+            "user_id": str(user_id),
+            "u_id": str(u_id),
+            "u_pass": str(u_pass),
+            "two_fa": str(two_fa),
+            "category": str(category)
+        }
+        # এটি ১০০০ মানুষ একসাথে করলেও ডাটাবেস লক হবে না
+        supabase.table("user_id_logs").insert(data).execute()
+        return True
+    except Exception as e:
+        print(f"সেভ করতে সমস্যা হয়েছে: {e}")
+        return False
 
 # ==========================================
 # ১. সেটিংস ও ডাটাবেস
