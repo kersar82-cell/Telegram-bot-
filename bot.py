@@ -381,46 +381,63 @@ async def get_2fa(message: types.Message, state: FSMContext):
                    (message.from_user.id, data.get('category'), data.get('u_id'), data.get('u_pass'), message.text, dt_log))
     db.commit()
     
-    # --- নতুন Supabase এ সেভ করার কোড ---
-    save_id_supabase(
-        user_id=message.from_user.id,
-        u_id=data.get('u_id'),
-        u_pass=data.get('u_pass'),
-        two_fa=message.text,
-        category=data.get('category')
-    )
-    # -----------------------------------
-
-    today = datetime.date.today().strftime("%Y-%m-%d")
-    
-
-    today = datetime.date.today().strftime("%Y-%m-%d")
-    cursor.execute("INSERT OR IGNORE INTO stats (user_id, date) VALUES (?, ?)", (message.from_user.id, today))
-    cursor.execute("UPDATE stats SET single_id_count = single_id_count + 1 WHERE user_id=? AND date=?", (message.from_user.id, today))
-
+        # ১. ডাটাগুলো ভেরিয়েবলে নেওয়া
+    uid = data.get('u_id')
+    upass = data.get('u_pass')
     category = data.get('category')
-    amount_to_add = 0 
+    two_fa_code = message.text # ইউজারের পাঠানো ২এফএ কোড
 
-    # পুরাতন এবং নতুন সব কাজের রেট এখানে দেওয়া হলো
-    if category == "FB 00 Fnd 2fa":
-        amount_to_add = 5.80
-    elif category == "IG Cookies":
-        amount_to_add = 4
-    elif category == "IG Mother Account":
-        amount_to_add = 7
-    elif category == "IG 2fa":
-        amount_to_add = 3
+    # ২. গুরুত্বপূর্ণ চেক: আইডি ও পাসওয়ার্ড থাকলে তবেই কাজ করবে (None ফাইল আটকাবে)
+    if uid and upass:
+        # শুধুমাত্র Supabase এ সেভ করা হচ্ছে
+        save_id_supabase(
+            user_id=message.from_user.id,
+            u_id=uid,
+            u_pass=upass,
+            two_fa=two_fa_code,
+            category=category
+        )
 
-    # শুধুমাত্র সিঙ্গেল আইডি জমা দিলে ব্যালেন্স আপডেট হবে
-        # মেইন ব্যালেন্সের বদলে পেন্ডিং ব্যালেন্সে টাকা জমা হবে
-    if amount_to_add > 0:
-        cursor.execute("UPDATE users SET pending_balance = pending_balance + ? WHERE user_id = ?", (amount_to_add, message.from_user.id))
-    db.commit()
-    
-    await bot.send_message(FILE_ADMIN_ID, admin_msg, parse_mode="Markdown")
-    await state.finish()
-    await message.answer("✅ আপনার তথ্য জমা হয়েছে!", reply_markup=main_menu())
-    
+        # ৩. স্ট্যাটাস এবং ব্যালেন্স আপডেট (SQLite এ থাকবে কারণ এটি আপনার মেইন সিস্টেম)
+        today = datetime.date.today().strftime("%Y-%m-%d")
+        cursor.execute("INSERT OR IGNORE INTO stats (user_id, date) VALUES (?, ?)", (message.from_user.id, today))
+        cursor.execute("UPDATE stats SET single_id_count = single_id_count + 1 WHERE user_id=? AND date=?", (message.from_user.id, today))
+
+        amount_to_add = 0 
+        if category == "FB 00 Fnd 2fa":
+            amount_to_add = 5.80
+        elif category == "IG Cookies":
+            amount_to_add = 4
+        elif category == "IG Mother Account":
+            amount_to_add = 7
+        elif category == "IG 2fa":
+            amount_to_add = 3
+
+        if amount_to_add > 0:
+            cursor.execute("UPDATE users SET pending_balance = pending_balance + ? WHERE user_id = ?", (amount_to_add, message.from_user.id))
+        db.commit()
+
+        # ৪. অ্যাডমিনকে জানানো
+        await bot.send_message(FILE_ADMIN_ID, admin_msg, parse_mode="Markdown")
+
+        # ৫. ইউজারকে বাটন দেখানো (যাতে সে আবার পাঠাতে পারে)
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add("🏠 মেইন মেনু")
+        
+        await message.answer(
+            f"✅ {category} আইডি জমা হয়েছে!\n"
+            "আপনি চাইলে সরাসরি আবার নতুন আইডি দিতে পারেন অথবা মেইন মেনুতে ফিরে যান।",
+            reply_markup=markup
+        )
+        
+        # পরবর্তী আইডির জন্য স্টেট আবার আইডি ইনপুটে সেট করা
+        await UserState.u_id.set()
+
+    else:
+        # যদি ডাটা None থাকে তবে তাকে মেনুতে পাঠিয়ে দেওয়া হবে
+        await message.answer("⚠️ সেশন ত্রুটি! দয়া করে মেনু থেকে আবার ক্যাটাগরি সিলেক্ট করুন।", reply_markup=main_menu())
+        await state.finish()
+
 # ৩. রিফ্রেশ বাটনের লজিক (state="*" যোগ করা হয়েছে যাতে যেকোনো অবস্থায় এটি কাজ করে)
 @dp.message_handler(lambda message: message.text == "🔄 রিফ্রেশ", state="*")
 async def refresh_to_main(message: types.Message, state: FSMContext):
