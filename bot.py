@@ -436,33 +436,64 @@ async def get_2fa(message: types.Message, state: FSMContext):
         # যদি ডাটা কোনো কারণে খালি (None) হয়
         await message.answer("⚠️ সেশন ত্রুটি! দয়া করে মেনু থেকে আবার ক্যাটাগরি সিলেক্ট করুন।", reply_markup=main_menu())
         await state.finish()
+        # ==========================================
+# নির্দিষ্ট ইউজারের সব আইডি ডিলিট করার কমান্ড
+# ==========================================
+@dp.message_handler(commands=['del_user_data'], user_id=ADMIN_ID)
+async def delete_user_all_ids(message: types.Message):
+    # কমান্ডটি হবে: /del_user_data [ইউজার_আইডি]
+    target_user = message.get_args()
+    
+    if not target_user or not target_user.isdigit():
+        return await message.answer("❌ সঠিক নিয়ম: `/del_user_data [ইউজার_আইডি]`\nউদাহরণ: `/del_user_data 123456789`", parse_mode="Markdown")
+    
+    deleted_msg = await message.answer("⏳ ডাটাবেস থেকে ইউজারের সব আইডি খোঁজা হচ্ছে এবং ডিলিট করা হচ্ছে...")
+
+    try:
+        # ১. Supabase (Cloud Database) থেকে সব ডাটা ডিলিট করা
+        supabase.table("user_id_logs").delete().eq("user_id", str(target_user)).execute()
+        
+        # ২. SQLite (Local Database) থেকে ডিলিট করা
+        cursor.execute("DELETE FROM user_id_logs WHERE user_id = ?", (target_user,))
+        db.commit()
+        
+        # ৩. সবচেয়ে ইম্পর্ট্যান্ট: ডাটাবেস রিকভারি (VACUUM)
+        # এটি ডিলিট করা ডাটার ফাঁকা জায়গাটা রিকভার করে ডাটাবেসের সাইজ কমিয়ে দেয়
+        cursor.execute("VACUUM")
+        db.commit()
+
+        # সফল মেসেজ
+        await deleted_msg.edit_text(f"✅ **সাকসেস!**\n\nইউজার `{target_user}` এর পাঠানো সকল আইডি **Supabase** এবং **Local Database** থেকে চিরতরে মুছে ফেলা হয়েছে।\n🚀 ডাটাবেস এখন একদম ফাস্ট এবং চাপমুক্ত!", parse_mode="Markdown")
+        
+    except Exception as e:
+        await deleted_msg.edit_text(f"❌ ডিলিট করতে সমস্যা হয়েছে: {str(e)}")
+    
 # ১. "🏠 মেইন মেনু" বাটনের কাজ
 @dp.message_handler(lambda message: message.text == "🏠 মেইন মেনু", state="*")
 async def back_to_main_menu(message: types.Message, state: FSMContext):
     # যে অবস্থাতেই থাকুক না কেন স্টেট ক্লিয়ার করে মেইন মেনুতে নিয়ে যাবে
     await state.finish()
     await message.answer("✅ আপনি মেইন মেনুতে ফিরে এসেছেন।", reply_markup=main_menu())
-
-# ২. "➕ আরেকটি পাঠান" বাটনের কাজ
+# ২. "➕ আরেকটি পাঠান" বাটনের কাজ (সংশোধিত)
 @dp.message_handler(lambda message: "➕ আরেকটি" in message.text, state="*")
 async def send_another_id(message: types.Message, state: FSMContext):
     # বাটন থেকে ক্যাটাগরির নাম আলাদা করা (যেমন: IG 2fa)
-    # আপনার বাটনের ফরম্যাট অনুযায়ী এটি নামটা খুঁজে নিবে
     text = message.text
     category_name = text.replace("➕ আরেকটি ", "").replace(" পাঠান", "").strip()
     
-    # স্টেট ক্লিয়ার করে নতুন করে ইউজার আইডি চাওয়ার স্টেটে পাঠানো
+    # ১. আগের সব স্টেট ক্লিয়ার করা
     await state.finish() 
-    await UserState.u_id.set()
     
-    # নতুন স্টেটে ক্যাটাগরিটা আবার সেভ করে রাখা
-    async with state.proxy() as data:
-        data['category'] = category_name
+    # ২. নতুন করে ইউজার আইডি চাওয়ার সঠিক স্টেটে পাঠানো (এখানেই সমাধানটি করা হয়েছে)
+    await BotState.waiting_for_single_user.set()
+    
+    # ৩. নতুন স্টেটে ক্যাটাগরিটা আবার সেভ করে রাখা
+    await state.update_data(category=category_name)
         
     await message.answer(
-        f"ঠিক আছে, আপনার নতুন **{category_name}** ইউজারনেম/আইডি দিন:", 
+        f"✅ ঠিক আছে, আপনার নতুন **{category_name}** এর ইউজার আইডি (User ID) দিন:", 
         parse_mode="Markdown", 
-        reply_markup=types.ReplyKeyboardRemove() # বাটন সরিয়ে কিবোর্ড ওপেন করা
+        reply_markup=types.ReplyKeyboardRemove() # নিচের বাটনগুলো সরিয়ে নরমাল কিবোর্ড আনবে
     )
     
 # ৩. রিফ্রেশ বাটনের লজিক (state="*" যোগ করা হয়েছে যাতে যেকোনো অবস্থায় এটি কাজ করে)
@@ -1044,8 +1075,7 @@ async def work_v2_handler(message: types.Message):
         return await message.answer("❌ দুঃখিত, আপনাকে ব্লক করা হয়েছে। \n\n✅আপনি 24 hrs পরে বটটি ব্যবহার করতে পারবেন না।")
         
     text = (
-        "🔴 **আপনার কাজের ক্যাটাগরি বেছে নিন:**\n"
-        "👍 যেকোনো সমস্যায়: @Dinanhaji !"
+        "🔴 **আপনার কাজের ক্যাটাগরি বেছে নিন:**"
     )
     await message.answer(text, reply_markup=work_v2_menu(), parse_mode="Markdown")
 
