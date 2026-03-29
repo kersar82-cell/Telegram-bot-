@@ -436,18 +436,35 @@ async def get_2fa(message: types.Message, state: FSMContext):
         # যদি ডাটা কোনো কারণে খালি (None) হয়
         await message.answer("⚠️ সেশন ত্রুটি! দয়া করে মেনু থেকে আবার ক্যাটাগরি সিলেক্ট করুন।", reply_markup=main_menu())
         await state.finish()
-@dp.message_handler(lambda message: "➕ আরেকটি" in message.text)
-async def send_again(message: types.Message, state: FSMContext):
-    # বাটন থেকে ক্যাটাগরির নাম বের করে নেওয়া
-    category_name = message.text.replace("➕ আরেকটি ", "").replace(" পাঠান", "")
-    
-    # আবার ইউজারনেম চাওয়ার স্টেটে নিয়ে যাওয়া
-    await UserState.u_id.set()
-    async with state.proxy() as data:
-        data['category'] = category_name # ক্যাটাগরিটা মনে রাখা হলো
-    
-    await message.answer(f"ঠিক আছে, আপনার নতুন **{category_name}** ইউজারনেম দিন:", parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
+# ১. "🏠 মেইন মেনু" বাটনের কাজ
+@dp.message_handler(lambda message: message.text == "🏠 মেইন মেনু", state="*")
+async def back_to_main_menu(message: types.Message, state: FSMContext):
+    # যে অবস্থাতেই থাকুক না কেন স্টেট ক্লিয়ার করে মেইন মেনুতে নিয়ে যাবে
+    await state.finish()
+    await message.answer("✅ আপনি মেইন মেনুতে ফিরে এসেছেন।", reply_markup=main_menu())
 
+# ২. "➕ আরেকটি পাঠান" বাটনের কাজ
+@dp.message_handler(lambda message: "➕ আরেকটি" in message.text, state="*")
+async def send_another_id(message: types.Message, state: FSMContext):
+    # বাটন থেকে ক্যাটাগরির নাম আলাদা করা (যেমন: IG 2fa)
+    # আপনার বাটনের ফরম্যাট অনুযায়ী এটি নামটা খুঁজে নিবে
+    text = message.text
+    category_name = text.replace("➕ আরেকটি ", "").replace(" পাঠান", "").strip()
+    
+    # স্টেট ক্লিয়ার করে নতুন করে ইউজার আইডি চাওয়ার স্টেটে পাঠানো
+    await state.finish() 
+    await UserState.u_id.set()
+    
+    # নতুন স্টেটে ক্যাটাগরিটা আবার সেভ করে রাখা
+    async with state.proxy() as data:
+        data['category'] = category_name
+        
+    await message.answer(
+        f"ঠিক আছে, আপনার নতুন **{category_name}** ইউজারনেম/আইডি দিন:", 
+        parse_mode="Markdown", 
+        reply_markup=types.ReplyKeyboardRemove() # বাটন সরিয়ে কিবোর্ড ওপেন করা
+    )
+    
 # ৩. রিফ্রেশ বাটনের লজিক (state="*" যোগ করা হয়েছে যাতে যেকোনো অবস্থায় এটি কাজ করে)
 @dp.message_handler(lambda message: message.text == "🔄 রিফ্রেশ", state="*")
 async def refresh_to_main(message: types.Message, state: FSMContext):
