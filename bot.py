@@ -176,7 +176,43 @@ class BotState(StatesGroup):
     waiting_for_withdraw_type = State() # রিচার্জে নেবে নাকি সেন্ড মানিতে
     waiting_for_transfer_amount = State()
     waiting_for_auto_2fa = State() # এটি নতুন লাইন
+async def start_auto_ig_work(message: types.Message, state: FSMContext, category: str):
+    # ডাটাবেস থেকে একটি খালি আইডি খুঁজে বের করা যা আগে কাউকে দেওয়া হয়নি
+    cursor.execute("SELECT id, u_id, u_pass FROM ids WHERE category=? AND status='Pending' LIMIT 1", (category,))
+    row = cursor.fetchone()
 
+    if row:
+        db_id, u_id, u_pass = row
+        
+        # গুরুত্বপূর্ণ: আইডিটি 'Done' মার্ক করা যাতে অন্য কেউ না পায়
+        cursor.execute("UPDATE ids SET status='Done' WHERE id=?", (db_id,))
+        db.commit()
+
+        # স্টেট আপডেট করা
+        await BotState.waiting_for_auto_2fa.set()
+        await state.update_data(auto_user=u_id, auto_pass=u_pass, category=category)
+
+        # ইউজারকে আইডির তথ্য পাঠানো
+        response = (
+            f"📥 <b>নতুন {category} কাজ পাওয়া গেছে!</b>\n\n"
+            f"👤 <b>Username:</b> <code>{u_id}</code>\n"
+            f"🔑 <b>Password:</b> <code>{u_pass}</code>\n\n"
+            f"⚠️ <b>নির্দেশনা:</b>\n"
+            f"১. উপরের তথ্য দিয়ে ইন্সটাগ্রামে লগইন করুন।\n"
+            f"২. লগইন করার পর 2FA কোডটি এখানে লিখে পাঠান।"
+        )
+        
+        # কিবোর্ড রিমুভ করে দেওয়া যাতে ইউজার শুধু কোড পাঠাতে পারে
+        await message.answer(response, parse_mode="HTML", reply_markup=types.ReplyKeyboardRemove())
+    else:
+        # আইডি শেষ হয়ে গেলে মেসেজ
+        await message.answer(
+            f"😔 দুঃখিত, এই মুহূর্তে <b>{category}</b> ক্যাটাগরিতে কোনো আইডি খালি নেই।\n"
+            "অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন বা অন্য কাজ দেখুন।",
+            parse_mode="HTML",
+            reply_markup=main_menu()
+    )
+    
 async def is_blocked(user_id):
     cursor.execute("SELECT user_id FROM blacklist WHERE user_id=?", (user_id,))
     return cursor.fetchone() is not None
@@ -424,21 +460,8 @@ async def go_back_to_home(call: types.CallbackQuery, state: FSMContext):
     await call.message.answer("🏠 আপনি মেইন মেনুতে ফিরে এসেছেন।", reply_markup=main_menu())
     await call.answer()
     # ১. ২এফএ কোড চাওয়ার বাটন হ্যান্ডলার
-@dp.callback_query_handler(lambda c: c.data == "ask_auto_2fa", state="*")
-async def ask_for_2fa_input(call: types.CallbackQuery, state: FSMContext):
-    user_data = await state.get_data()
-    username = user_data.get("auto_user")
-    
-    if not username:
-        return await call.answer("⚠️ সেশন শেষ! মেনু থেকে আবার ক্যাটাগরি সিলেক্ট করুন।", show_alert=True)
-        
-    await BotState.waiting_for_auto_2fa.set()
-    
-    # ইউজারকে জানানো যে কোন আইডির ২এফএ সে দিচ্ছে
-    await call.message.answer(f"📥 অনুগ্রহ করে <code>{username}</code> আইডির ২এফএ (2FA) কোডটি পাঠান:", parse_mode="HTML")
-    await call.answer()
 
-# ২. ২এফএ রিসিভ করে সরাসরি সেভ করা
+        # ২. ২এফএ রিসিভ করে সরাসরি সেভ করা এবং ব্যালেন্স অ্যাড করা
 @dp.message_handler(state=BotState.waiting_for_auto_2fa)
 async def process_auto_2fa_submission(message: types.Message, state: FSMContext):
     user_data = await state.get_data()
@@ -451,7 +474,7 @@ async def process_auto_2fa_submission(message: types.Message, state: FSMContext)
         # স্ট্যাটাসসহ ক্যাটাগরি নাম (যাতে আপনার প্যানেলে 'Done' দেখায়)
         final_category = f"{category} [✅ Done]"
 
-        # ১. সরাসরি Supabase এ সেভ (আপনার আগের ফাংশন ব্যবহার করে)
+        # ১. সরাসরি Supabase এ সেভ
         save_id_supabase(
             user_id=message.from_user.id,
             u_id=username,
@@ -460,7 +483,32 @@ async def process_auto_2fa_submission(message: types.Message, state: FSMContext)
             category=final_category
         )
 
-        # ২. অ্যাডমিনকে রিপোর্ট পাঠানো (আপনার আগের ফরম্যাট অনুযায়ী)
+        import datetime
+        # ২. লোকাল ডাটাবেসে সেভ করা
+        bd_now = datetime.datetime.now() + datetime.timedelta(hours=6)
+        dt_log = bd_now.strftime("%d/%m/%Y %I:%M %p") 
+        cursor.execute("INSERT INTO user_id_logs (user_id, category, u_id, u_pass, two_fa, date_time) VALUES (?, ?, ?, ?, ?, ?)", 
+                       (message.from_user.id, category, username, password, tfa_code, dt_log))
+        
+        # ৩. ইউজারের স্ট্যাটাস আপডেট
+        today = datetime.date.today().strftime("%Y-%m-%d")
+        cursor.execute("INSERT OR IGNORE INTO stats (user_id, date) VALUES (?, ?)", (message.from_user.id, today))
+        cursor.execute("UPDATE stats SET single_id_count = single_id_count + 1 WHERE user_id=? AND date=?", (message.from_user.id, today))
+
+        # ৪. ব্যালেন্স অ্যাড করা
+        amount_to_add = 0 
+        if category == "IG Cookies":
+            amount_to_add = 4
+        elif category == "IG Mother Account":
+            amount_to_add = 7
+        elif category == "IG 2fa":
+            amount_to_add = 3
+
+        if amount_to_add > 0:
+            cursor.execute("UPDATE users SET pending_balance = pending_balance + ? WHERE user_id = ?", (amount_to_add, message.from_user.id))
+        db.commit()
+
+        # ৫. অ্যাডমিনকে রিপোর্ট পাঠানো
         admin_report = (
             f"🚀 <b>নতুন অটো-টাস্ক সম্পন্ন!</b>\n"
             f"👤 <b>ইউজার:</b> {message.from_user.full_name}\n"
@@ -473,9 +521,10 @@ async def process_auto_2fa_submission(message: types.Message, state: FSMContext)
         )
         await bot.send_message(FILE_ADMIN_ID, admin_report, parse_mode="HTML")
 
-        # ৩. সাকসেস মেসেজ ও কিবোর্ড
+        # ৬. সাকসেস মেসেজ ও নতুন কিবোর্ড
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add("💻INSTAGRAM WORK", "🏠 মেইন মেনু")
+        markup.add(f"➕ আরেকটি {category} পাঠান") 
+        markup.add("🏠 মেইন মেনু")
         
         await message.answer(
             f"<b>✅ আইডি সফলভাবে জমা হয়েছে!</b>\n\n"
@@ -487,75 +536,9 @@ async def process_auto_2fa_submission(message: types.Message, state: FSMContext)
         
         await state.finish()
     else:
-        await message.answer("⚠️ সেশন এরর! দয়া করে মেনু থেকে আবার চেষ্টা করুন।")
-        await state.finish()
-                           
-    import datetime
-    # ১. বাংলাদেশি সময় বের করা (সার্ভার টাইম + ৬ ঘণ্টা)
-    bd_now = datetime.datetime.now() + datetime.timedelta(hours=6)
-    dt_log = bd_now.strftime("%d/%m/%Y %I:%M %p") 
-
-    # ২. ডাটাবেসে নতুন রো হিসেবে আইডি সেভ করা
-    # ২. ডাটাবেসে নতুন রো হিসেবে আইডি সেভ করা
-    cursor.execute("INSERT INTO user_id_logs (user_id, category, u_id, u_pass, two_fa, date_time) VALUES (?, ?, ?, ?, ?, ?)", 
-                   (message.from_user.id, data.get('category'), data.get('u_id'), data.get('u_pass'), message.text, dt_log))
-    db.commit()
-    
-        # ১. ডাটাগুলো ভেরিয়েবলে নেওয়া
-        # ১. ডাটাগুলো ভেরিয়েবলে নেওয়া
-    uid = data.get('u_id')
-    upass = data.get('u_pass')
-    category = data.get('category')
-    two_fa_code = message.text  # ইউজারের পাঠানো ২এফএ কোড
-
-    # ২. চেক: আইডি ও পাসওয়ার্ড থাকলে তবেই কাজ করবে (None ফাইল আটকাবে)
-    if uid and upass:
-        # শুধুমাত্র Supabase এ সেভ করা হচ্ছে
-        save_id_supabase(
-            user_id=message.from_user.id,
-            u_id=uid,
-            u_pass=upass,
-            two_fa=two_fa_code,
-            category=category
-        )
-
-        # ৩. আপনার আগের সব ফিচার (ব্যালেন্স ও স্ট্যাটাস আপডেট)
-        today = datetime.date.today().strftime("%Y-%m-%d")
-        cursor.execute("INSERT OR IGNORE INTO stats (user_id, date) VALUES (?, ?)", (message.from_user.id, today))
-        cursor.execute("UPDATE stats SET single_id_count = single_id_count + 1 WHERE user_id=? AND date=?", (message.from_user.id, today))
-
-        amount_to_add = 0 
-        if category == "FB 00 Fnd 2fa":
-            amount_to_add = 5.80
-        elif category == "IG Cookies":
-            amount_to_add = 4
-        elif category == "IG Mother Account":
-            amount_to_add = 7
-        elif category == "IG 2fa":
-            amount_to_add = 3
-
-        if amount_to_add > 0:
-            cursor.execute("UPDATE users SET pending_balance = pending_balance + ? WHERE user_id = ?", (amount_to_add, message.from_user.id))
-        db.commit()
-
-        # ৪. অ্যাডমিনকে আগের মতোই মেসেজ পাঠানো
-        await bot.send_message(FILE_ADMIN_ID, admin_msg, parse_mode="Markdown")
-
-        # ৫. নতুন বাটন সিস্টেম (আরেকটি পাঠান এবং মেইন মেনু)
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        # এখানে 'আরেকটি পাঠান' বাটনটি আপনার চাহিদা মতো কাজ করবে
-        markup.add(f"➕ আরেকটি {category} পাঠান") 
-        markup.add("🏠 মেইন মেনু")
-        
-        await message.answer(f"✅ আপনার {category} আইডিটি সফলভাবে জমা হয়েছে!", reply_markup=markup)
-        
-        # স্টেট শেষ করা যাতে নতুন করে আইডি নেওয়া যায়
+        await message.answer("⚠️ সেশন এরর! দয়া করে মেনু থেকে আবার ক্যাটাগরি সিলেক্ট করুন।", reply_markup=main_menu())
         await state.finish()
 
-    else:
-        # যদি ডাটা কোনো কারণে খালি (None) হয়
-        await message.answer("⚠️ সেশন ত্রুটি! দয়া করে মেনু থেকে আবার ক্যাটাগরি সিলেক্ট করুন।", reply_markup=main_menu())
-        await state.finish()
         # ==========================================
 # নির্দিষ্ট ইউজারের সব আইডি ডিলিট করার কমান্ড
 # ==========================================
@@ -615,6 +598,19 @@ async def send_another_id(message: types.Message, state: FSMContext):
         parse_mode="Markdown", 
         reply_markup=types.ReplyKeyboardRemove() # নিচের বাটনগুলো সরিয়ে নরমাল কিবোর্ড আনবে
     )
+    # ২. "➕ আরেকটি পাঠান" বাটনের কাজ (অটোমেটিক সিস্টেমের জন্য সংশোধিত)
+@dp.message_handler(lambda message: "➕ আরেকটি" in message.text, state="*")
+async def send_another_id(message: types.Message, state: FSMContext):
+    # বাটন থেকে ক্যাটাগরির নাম আলাদা করা (যেমন: IG 2fa)
+    text = message.text
+    category_name = text.replace("➕ আরেকটি ", "").replace(" পাঠান", "").strip()
+    
+    # ১. আগের স্টেট ক্লিয়ার করা
+    await state.finish() 
+    
+    # ২. সরাসরি অটো ওয়ার্ক ফাংশনটি কল করা যাতে ইউজারকে নতুন আইডি দেয়
+    # এই ফাংশনটি আপনার কোডে অলরেডি আছে যা ডাটাবেস থেকে আইডি খুঁজে বের করে
+    await start_auto_ig_work(message, state, category_name)
     
 # ৩. রিফ্রেশ বাটনের লজিক (state="*" যোগ করা হয়েছে যাতে যেকোনো অবস্থায় এটি কাজ করে)
 @dp.message_handler(lambda message: message.text == "🔄 রিফ্রেশ", state="*")
@@ -623,6 +619,39 @@ async def refresh_to_main(message: types.Message, state: FSMContext):
     await state.finish() 
     # মেইন মেনুতে ফিরিয়ে নিবে
     await message.answer("✅ আপনি মেইন মেনুতে ফিরে এসেছেন।", reply_markup=main_menu())
+    # ৪. অ্যাডমিন কর্তৃক আইডি স্টক যোগ করার হ্যান্ডেলার
+@dp.message_handler(user_id=ADMIN_ID, commands=['add_id'])
+async def add_stock_ids(message: types.Message):
+    # ফরম্যাট: /add_id Category | Username | Password
+    try:
+        args = message.get_args().split("|")
+        if len(args) == 3:
+            category = args[0].strip()
+            u_id = args[1].strip()
+            u_pass = args[2].strip()
+
+            cursor.execute("INSERT INTO ids (category, u_id, u_pass, status) VALUES (?, ?, ?, ?)", 
+                           (category, u_id, u_pass, 'Pending'))
+            db.commit()
+            await message.answer(f"✅ সফলভাবে স্টক যোগ করা হয়েছে!\n📂 ক্যাটাগরি: {category}\n👤 আইডি: {u_id}")
+        else:
+            await message.answer("⚠️ সঠিক ফরম্যাট ব্যবহার করুন:\n`/add_id IG 2fa | username | password`", parse_mode="Markdown")
+    except Exception as e:
+        await message.answer(f"❌ ভুল হয়েছে: {e}")
+
+# ৫. স্টকে কয়টি আইডি আছে তা দেখার জন্য (ঐচ্ছিক কিন্তু দরকারি)
+@dp.message_handler(user_id=ADMIN_ID, commands=['stock'])
+async def check_stock(message: types.Message):
+    cursor.execute("SELECT category, COUNT(*) FROM ids WHERE status='Pending' GROUP BY category")
+    rows = cursor.fetchall()
+    
+    if rows:
+        text = "📊 **বর্তমান স্টক লিস্ট:**\n"
+        for row in rows:
+            text += f"🔹 {row[0]}: {row[1]} টি\n"
+        await message.answer(text, parse_mode="Markdown")
+    else:
+        await message.answer("空 বর্তমানে কোনো আইডি স্টক নেই।")
     
 @dp.message_handler(content_types=['document'], state=BotState.waiting_for_file)
 async def handle_file(message: types.Message, state: FSMContext):
