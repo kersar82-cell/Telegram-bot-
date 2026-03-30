@@ -175,6 +175,8 @@ class BotState(StatesGroup):
     # উইথড্র করার জন্য স্টেট
     waiting_for_withdraw_type = State() # রিচার্জে নেবে নাকি সেন্ড মানিতে
     waiting_for_transfer_amount = State()
+    waiting_for_auto_2fa = State() # এটি নতুন লাইন
+
 async def is_blocked(user_id):
     cursor.execute("SELECT user_id FROM blacklist WHERE user_id=?", (user_id,))
     return cursor.fetchone() is not None
@@ -199,6 +201,44 @@ async def check_joined(user_id):
         return False
     except Exception:
         return False
+import random
+
+def generate_ig_username():
+    # অনেকগুলো প্রিফিক্স
+    prefixes = [
+        "itz", "the_real", "official", "daily", "ig", "pro", "mr", "pure", "iam", "its_me", 
+        "vloger", "king", "queen", "smart", "cool", "stylish", "creative", "urban", "boss", "elite"
+    ]
+    
+    # অনেকগুলো নাম (দেশি ও বিদেশি মিশিয়ে)
+    names = [
+        "rahul", "alex", "nila", "sam", "jhon", "riya", "max", "khan", "arman", "sara",
+        "tushar", "emran", "firoz", "mim", "liza", "pavel", "abir", "sakib", "rakib", "shuvo",
+        "david", "kevin", "linda", "amy", "rose", "jack", "tom", "jerry", "leo", "mia"
+    ]
+    
+    # সাফিক্স বা শেষের অংশ
+    suffix = [
+        "_official", "_vlogs", "77", "_01", "360", "_king", "_99", "_zone", "_hub", "_studio",
+        ".me", "_world", "_404", "_xd", "_life", "007", "_bd", "_usa", "_top", "_star"
+    ]
+    
+    # র‍্যান্ডমলি সিলেক্ট করা
+    p = random.choice(prefixes)
+    n = random.choice(names)
+    s = random.choice(suffix)
+    num = random.randint(1000, 99999) # ৪ থেকে ৫ ডিজিটের বড় সংখ্যা যাতে ডুপ্লিকেট না হয়
+    
+    # বিভিন্ন ফরম্যাটে নাম জেনারেট করা
+    formats = [
+        f"{p}_{n}{num}",
+        f"{n}_{p}{s}",
+        f"{p}{n}_{num}",
+        f"{n}{num}{s}",
+        f"{p}_{n}_{s}{num}"
+    ]
+    
+    return random.choice(formats)
     
 # /start কমান্ডে মেইন মেনু, রেফারেল ও ওয়েলকাম মেসেজ
 @dp.message_handler(commands=['start'], state="*")
@@ -304,72 +344,152 @@ async def work_start(message: types.Message):
 # এই হ্যান্ডলারটি এখন একদম পারফেক্ট কাজ করবে
 @dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa", "IG Cookies"])
 async def ask_work_type(message: types.Message, state: FSMContext):
-    await state.update_data(category=message.text)
-    # বাটন অনুযায়ী চেক করা কাজ চালু আছে কি না
-    if message.text == "IG Mother Account" and not IG_MOTHER_ENABLED:
+    category = message.text
+    
+    # আপনার আগের অন/অফ লজিকগুলো ঠিক রাখা হয়েছে
+    if category == "IG Mother Account" and not IG_MOTHER_ENABLED:
         return await message.answer("⚠️ দুঃখিত, বর্তমানে IG Mother Account কাজ সাময়িকভাবে বন্ধ আছে।")
-    
-    if message.text == "IG 2fa" and not IG_2FA_ENABLED:
+    if category == "IG 2fa" and not IG_2FA_ENABLED:
         return await message.answer("⚠️ দুঃখিত, বর্তমানে IG 2fa কাজ সাময়িকভাবে বন্ধ আছে।")
-        
-    if message.text == "IG Cookies" and not IG_COOKIES_ENABLED:
+    if category == "IG Cookies" and not IG_COOKIES_ENABLED:
         return await message.answer("⚠️ দুঃখিত, বর্তমানে IG Cookies কাজ সাময়িকভাবে বন্ধ আছে।")
-    
-    inline_kb = types.InlineKeyboardMarkup(row_width=2)
-    btn_file = types.InlineKeyboardButton("🗃️ File", callback_data="type_file")
-    btn_single = types.InlineKeyboardButton("👤 Single ID", callback_data="type_single")
 
-    if message.text == "IG Cookies":
-        btn_link = types.InlineKeyboardButton("🔗 Submit Link", url="https://t.me/instafbhub/147")
-        inline_kb.add(btn_file, btn_single)
-        inline_kb.add(btn_link)
+    # অটোমেটিক ইউজারনেম এবং ফিক্সড পাসওয়ার্ড জেনারেট
+    username = generate_ig_username() # এটি ধাপ ২ এর ফাংশন থেকে আসবে
+    fixed_password = "UserPass@2026" 
+
+    # ডাটাগুলো বটের মেমোরিতে সেভ রাখা
+    await state.update_data(auto_user=username, auto_pass=fixed_password, category=category)
+
+    # ইনলাইন বাটন তৈরি (HTML এর জন্য ইনলাইন বাটনই বেস্ট)
+    inline_kb = types.InlineKeyboardMarkup(row_width=1)
+    btn_2fa = types.InlineKeyboardButton("🔐 2FA কোড দিন", callback_data="ask_auto_2fa")
+    btn_regen = types.InlineKeyboardButton("🔄 নতুন ইউজারনেম (Regenerate)", callback_data="regen_ig_user")
+    btn_back = types.InlineKeyboardButton("🔙 ফিরে যান", callback_data="back_to_main")
+    inline_kb.add(btn_2fa, btn_regen, btn_back)
+
+    # HTML ফরম্যাটে মেসেজ (<code> ব্যবহারের ফলে ক্লিক করলে কপি হবে)
+    text = (
+        f"<b>✅ আপনি বেছে নিয়েছেন:</b> {category}\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"<b>👤 Username:</b> <code>{username}</code>\n"
+        f"<b>🔑 Password:</b> <code>{fixed_password}</code>\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"<i>💡 উপরের তথ্য দিয়ে লগিন করুন। ইউজারনেম না মিললে '🔄 নতুন ইউজারনেম' বাটনে ক্লিক করুন। কাজ শেষে ২এফএ কোড দিন।</i>"
+    )
+
+    await message.answer(text, reply_markup=inline_kb, parse_mode="HTML")
+    # ১. "🔄 নতুন ইউজারনেম" বাটনের কাজ (Regenerate)
+@dp.callback_query_handler(lambda c: c.data == "regen_ig_user", state="*")
+async def regenerate_user_logic(call: types.CallbackQuery, state: FSMContext):
+    # নতুন একটি ইউনিক নাম তৈরি করা
+    new_username = generate_ig_username()
+    
+    # মেমোরি থেকে আগের ক্যাটাগরি এবং পাসওয়ার্ড নেওয়া
+    user_data = await state.get_data()
+    category = user_data.get("category", "IG Work")
+    fixed_pass = user_data.get("auto_pass", "UserPass@2026")
+
+    # মেমোরিতে নতুন ইউজারনেমটি আপডেট করে রাখা
+    await state.update_data(auto_user=new_username)
+
+    # ইনলাইন বাটনগুলো আগের মতোই থাকবে
+    inline_kb = types.InlineKeyboardMarkup(row_width=1)
+    btn_2fa = types.InlineKeyboardButton("🔐 2FA কোড দিন", callback_data="ask_auto_2fa")
+    btn_regen = types.InlineKeyboardButton("🔄 নতুন ইউজারনেম (Regenerate)", callback_data="regen_ig_user")
+    btn_back = types.InlineKeyboardButton("🔙 ফিরে যান", callback_data="back_to_main")
+    inline_kb.add(btn_2fa, btn_regen, btn_back)
+
+    # HTML ফরম্যাটে আগের মেসেজটি এডিট করা (যাতে স্ক্রিন ক্লিন থাকে)
+    text = (
+        f"<b>📌 ক্যাটাগরি:</b> {category}\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"<b>👤 Username:</b> <code>{new_username}</code> (Updated ✨)\n"
+        f"<b>🔑 Password:</b> <code>{fixed_pass}</code>\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"<i>💡 নতুন ইউজারনেম জেনারেট হয়েছে। এটি কপি করে লগিন করুন এবং কাজ শেষে ২এফএ কোড দিন।</i>"
+    )
+    
+    try:
+        await call.message.edit_text(text, reply_markup=inline_kb, parse_mode="HTML")
+        await call.answer("✅ নতুন ইউজারনেম তৈরি হয়েছে!")
+    except Exception as e:
+        await call.answer("⚠️ কোনো পরিবর্তন হয়নি বা এরর হয়েছে।")
+
+# ২. "🔙 ফিরে যান" বাটনের কাজ
+@dp.callback_query_handler(lambda c: c.data == "back_to_main", state="*")
+async def go_back_to_home(call: types.CallbackQuery, state: FSMContext):
+    await state.finish() # সব স্টেট ক্লিয়ার করা
+    await call.message.delete() # বর্তমান মেসেজটি মুছে ফেলা
+    await call.message.answer("🏠 আপনি মেইন মেনুতে ফিরে এসেছেন।", reply_markup=main_menu())
+    await call.answer()
+    # ১. ২এফএ কোড চাওয়ার বাটন হ্যান্ডলার
+@dp.callback_query_handler(lambda c: c.data == "ask_auto_2fa", state="*")
+async def ask_for_2fa_input(call: types.CallbackQuery, state: FSMContext):
+    user_data = await state.get_data()
+    username = user_data.get("auto_user")
+    
+    if not username:
+        return await call.answer("⚠️ সেশন শেষ! মেনু থেকে আবার ক্যাটাগরি সিলেক্ট করুন।", show_alert=True)
+        
+    await BotState.waiting_for_auto_2fa.set()
+    
+    # ইউজারকে জানানো যে কোন আইডির ২এফএ সে দিচ্ছে
+    await call.message.answer(f"📥 অনুগ্রহ করে <code>{username}</code> আইডির ২এফএ (2FA) কোডটি পাঠান:", parse_mode="HTML")
+    await call.answer()
+
+# ২. ২এফএ রিসিভ করে সরাসরি সেভ করা
+@dp.message_handler(state=BotState.waiting_for_auto_2fa)
+async def process_auto_2fa_submission(message: types.Message, state: FSMContext):
+    user_data = await state.get_data()
+    username = user_data.get('auto_user')
+    password = user_data.get('auto_pass')
+    category = user_data.get('category')
+    tfa_code = message.text # ইউজারের পাঠানো কোড
+
+    if username and password:
+        # স্ট্যাটাসসহ ক্যাটাগরি নাম (যাতে আপনার প্যানেলে 'Done' দেখায়)
+        final_category = f"{category} [✅ Done]"
+
+        # ১. সরাসরি Supabase এ সেভ (আপনার আগের ফাংশন ব্যবহার করে)
+        save_id_supabase(
+            user_id=message.from_user.id,
+            u_id=username,
+            u_pass=password,
+            two_fa=tfa_code,
+            category=final_category
+        )
+
+        # ২. অ্যাডমিনকে রিপোর্ট পাঠানো (আপনার আগের ফরম্যাট অনুযায়ী)
+        admin_report = (
+            f"🚀 <b>নতুন অটো-টাস্ক সম্পন্ন!</b>\n"
+            f"👤 <b>ইউজার:</b> {message.from_user.full_name}\n"
+            f"🆔 <b>আইডি:</b> <code>{message.from_user.id}</code>\n"
+            f"📂 <b>ক্যাটাগরি:</b> {category}\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"🆔 <b>ID:</b> <code>{username}</code>\n"
+            f"🔑 <b>Pass:</b> <code>{password}</code>\n"
+            f"🔐 <b>2FA:</b> <code>{tfa_code}</code>"
+        )
+        await bot.send_message(FILE_ADMIN_ID, admin_report, parse_mode="HTML")
+
+        # ৩. সাকসেস মেসেজ ও কিবোর্ড
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add("💻INSTAGRAM WORK", "🏠 মেইন মেনু")
+        
+        await message.answer(
+            f"<b>✅ আইডি সফলভাবে জমা হয়েছে!</b>\n\n"
+            f"👤 ইউজারনেম: <code>{username}</code>\n"
+            f"📊 স্ট্যাটাস: <b>🟢 সম্পন্ন (Done)</b>\n\n"
+            f"ধন্যবাদ! আপনার তথ্য ডাটাবেসে সেভ করা হয়েছে।", 
+            reply_markup=markup, parse_mode="HTML"
+        )
+        
+        await state.finish()
     else:
-        inline_kb.add(btn_file, btn_single)
-
-    await message.answer(f"✅ আপনি বেছে নিয়েছেন: **{message.text}**\n\n━━━━━━━━━━━━━━━\n\nএখন কিভাবে ডাটা জমা দিতে চান? নিচের বাটন থেকে সিলেক্ট করুন।", 
-                         reply_markup=inline_kb, 
-                         parse_mode="Markdown")
-    
-# --- ইনলাইন বাটনের প্রসেসিং (File vs Single ID) ---
-@dp.callback_query_handler(lambda c: c.data.startswith('type_'), state="*")
-async def process_callback_work_type(callback_query: types.CallbackQuery):
-    if callback_query.data == "type_file":
-        await bot.answer_callback_query(callback_query.id)
-        await bot.send_message(callback_query.from_user.id, "📤 আপনার এক্সেল ফাইলটি (Excel File) পাঠান।")
-        await BotState.waiting_for_file.set()
-    elif callback_query.data == "type_single":
-        await bot.answer_callback_query(callback_query.id)
-        await bot.send_message(callback_query.from_user.id, "🔙 মেন মেনুতে ফিরে যেতে/start\n👤 আপনার ইউজার আইডি (User ID) দিন:")
-        await BotState.waiting_for_single_user.set()
-
-# --- সিঙ্গেল আইডির তথ্য এক এক করে নেওয়ার হ্যান্ডলার ---
-@dp.message_handler(state=BotState.waiting_for_single_user)
-async def get_id(message: types.Message, state: FSMContext):
-    await state.update_data(u_id=message.text)
-    await message.answer("🔙 মেইন মেনুতে ফিরে যেতে/start\n🔑 এবার পাসওয়ার্ড (Password) দিন:")
-    await BotState.waiting_for_single_pass.set()
-
-@dp.message_handler(state=BotState.waiting_for_single_pass)
-async def get_pass(message: types.Message, state: FSMContext):
-    await state.update_data(u_pass=message.text)
-    await message.answer("🔙 মেইন মেনুতে ফিরে যেতে/start\n🔐 এবার টু-এফা (2FA Code) দিন:")
-    await BotState.waiting_for_single_2fa.set()
-# ১৪৭ নম্বর লাইনে এটি বসান (যদি না থাকে)
-
-@dp.message_handler(state=BotState.waiting_for_single_2fa)
-async def get_2fa(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    # ১৪৯ থেকে ১৫৫ নম্বর লাইনের সিঙ্গেল আইডি রিপোর্ট অংশ
-    admin_msg = (f"🚀 **নতুন সিঙ্গেল আইডি জমা পড়েছে!**\n"
-                 f"👤 **ইউজার:** {message.from_user.full_name}\n"
-                 f"🆔 **আইডি:** `{message.from_user.id}`\n"
-                 f"🔗 **প্রোফাইল:** [এখানে ক্লিক করুন](tg://user?id={message.from_user.id})\n"
-                 f"📂 **ক্যাটাগরি:** {data.get('category')}\n"
-                 f"━━━━━━━━━━━━━━━\n"
-                 f"🆔 **ID:** `{data.get('u_id')}`\n"
-                 f"🔑 **Pass:** `{data.get('u_pass')}`\n"
-                 f"🔐 **2FA:** `{message.text}`")
-
+        await message.answer("⚠️ সেশন এরর! দয়া করে মেনু থেকে আবার চেষ্টা করুন।")
+        await state.finish()
+                           
     import datetime
     # ১. বাংলাদেশি সময় বের করা (সার্ভার টাইম + ৬ ঘণ্টা)
     bd_now = datetime.datetime.now() + datetime.timedelta(hours=6)
