@@ -150,7 +150,15 @@ db.commit()
 # user_id এর ওপর একটি ইনডেক্স তৈরি করা
 cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_id ON user_id_logs (user_id)")
 db.commit()
-    
+    # ডাটাবেস সেটআপ অংশে এটি যোগ করুন
+cursor.execute('''CREATE TABLE IF NOT EXISTS ids 
+                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                   category TEXT, 
+                   u_id TEXT, 
+                   u_pass TEXT, 
+                   status TEXT DEFAULT 'Pending')''')
+db.commit()
+
 class BotState(StatesGroup):
     waiting_for_file = State()
     waiting_for_address = State()
@@ -176,43 +184,7 @@ class BotState(StatesGroup):
     waiting_for_withdraw_type = State() # রিচার্জে নেবে নাকি সেন্ড মানিতে
     waiting_for_transfer_amount = State()
     waiting_for_auto_2fa = State() # এটি নতুন লাইন
-async def start_auto_ig_work(message: types.Message, state: FSMContext, category: str):
-    # ডাটাবেস থেকে একটি খালি আইডি খুঁজে বের করা যা আগে কাউকে দেওয়া হয়নি
-    cursor.execute("SELECT id, u_id, u_pass FROM ids WHERE category=? AND status='Pending' LIMIT 1", (category,))
-    row = cursor.fetchone()
 
-    if row:
-        db_id, u_id, u_pass = row
-        
-        # গুরুত্বপূর্ণ: আইডিটি 'Done' মার্ক করা যাতে অন্য কেউ না পায়
-        cursor.execute("UPDATE ids SET status='Done' WHERE id=?", (db_id,))
-        db.commit()
-
-        # স্টেট আপডেট করা
-        await BotState.waiting_for_auto_2fa.set()
-        await state.update_data(auto_user=u_id, auto_pass=u_pass, category=category)
-
-        # ইউজারকে আইডির তথ্য পাঠানো
-        response = (
-            f"📥 <b>নতুন {category} কাজ পাওয়া গেছে!</b>\n\n"
-            f"👤 <b>Username:</b> <code>{u_id}</code>\n"
-            f"🔑 <b>Password:</b> <code>{u_pass}</code>\n\n"
-            f"⚠️ <b>নির্দেশনা:</b>\n"
-            f"১. উপরের তথ্য দিয়ে ইন্সটাগ্রামে লগইন করুন।\n"
-            f"২. লগইন করার পর 2FA কোডটি এখানে লিখে পাঠান।"
-        )
-        
-        # কিবোর্ড রিমুভ করে দেওয়া যাতে ইউজার শুধু কোড পাঠাতে পারে
-        await message.answer(response, parse_mode="HTML", reply_markup=types.ReplyKeyboardRemove())
-    else:
-        # আইডি শেষ হয়ে গেলে মেসেজ
-        await message.answer(
-            f"😔 দুঃখিত, এই মুহূর্তে <b>{category}</b> ক্যাটাগরিতে কোনো আইডি খালি নেই।\n"
-            "অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন বা অন্য কাজ দেখুন।",
-            parse_mode="HTML",
-            reply_markup=main_menu()
-    )
-    
 async def is_blocked(user_id):
     cursor.execute("SELECT user_id FROM blacklist WHERE user_id=?", (user_id,))
     return cursor.fetchone() is not None
@@ -451,7 +423,20 @@ async def regenerate_user_logic(call: types.CallbackQuery, state: FSMContext):
         await call.answer("✅ নতুন ইউজারনেম তৈরি হয়েছে!")
     except Exception as e:
         await call.answer("⚠️ কোনো পরিবর্তন হয়নি বা এরর হয়েছে।")
-
+# 2FA কোড নেওয়ার জন্য নতুন হ্যান্ডলার
+@dp.callback_query_handler(lambda c: c.data == "ask_auto_2fa", state="*")
+async def trigger_2fa_input(call: types.CallbackQuery):
+    # ইউজারকে 2FA দেওয়ার স্টেটে নিয়ে যাওয়া
+    await BotState.waiting_for_auto_2fa.set()
+    
+    # ইনলাইন মেসেজটি এডিট করে বা নতুন মেসেজ দিয়ে কোড চাওয়া
+    await call.message.answer(
+        "🔐 **অনুগ্রহ করে আপনার 2FA (Two-Factor Authentication) কোডটি নিচে লিখে পাঠান:**", 
+        parse_mode="Markdown",
+        reply_markup=types.ReplyKeyboardRemove()
+    )
+    await call.answer()
+    
 # ২. "🔙 ফিরে যান" বাটনের কাজ
 @dp.callback_query_handler(lambda c: c.data == "back_to_main", state="*")
 async def go_back_to_home(call: types.CallbackQuery, state: FSMContext):
@@ -577,40 +562,35 @@ async def back_to_main_menu(message: types.Message, state: FSMContext):
     # যে অবস্থাতেই থাকুক না কেন স্টেট ক্লিয়ার করে মেইন মেনুতে নিয়ে যাবে
     await state.finish()
     await message.answer("✅ আপনি মেইন মেনুতে ফিরে এসেছেন।", reply_markup=main_menu())
-# ২. "➕ আরেকটি পাঠান" বাটনের কাজ (সংশোধিত)
+# আগের দুটি "➕ আরেকটি" হ্যান্ডলার মুছে ফেলে শুধু এই একটি রাখুন
 @dp.message_handler(lambda message: "➕ আরেকটি" in message.text, state="*")
-async def send_another_id(message: types.Message, state: FSMContext):
-    # বাটন থেকে ক্যাটাগরির নাম আলাদা করা (যেমন: IG 2fa)
+async def send_another_id_clean(message: types.Message, state: FSMContext):
+    # বাটন থেকে ক্যাটাগরি বের করা (যেমন: IG 2FA)
     text = message.text
-    category_name = text.replace("➕ আরেকটি ", "").replace(" পাঠান", "").strip()
+    category = text.replace("➕ আরেকটি ", "").replace(" পাঠান", "").strip()
     
-    # ১. আগের সব স্টেট ক্লিয়ার করা
-    await state.finish() 
-    
-    # ২. নতুন করে ইউজার আইডি চাওয়ার সঠিক স্টেটে পাঠানো (এখানেই সমাধানটি করা হয়েছে)
-    await BotState.waiting_for_single_user.set()
-    
-    # ৩. নতুন স্টেটে ক্যাটাগরিটা আবার সেভ করে রাখা
-    await state.update_data(category=category_name)
-        
-    await message.answer(
-        f"✅ ঠিক আছে, আপনার নতুন **{category_name}** এর ইউজার আইডি (User ID) দিন:", 
-        parse_mode="Markdown", 
-        reply_markup=types.ReplyKeyboardRemove() # নিচের বাটনগুলো সরিয়ে নরমাল কিবোর্ড আনবে
+    # নতুন ইউজারনেম তৈরি
+    new_username = generate_ig_username()
+    fixed_password = "UserPass@2026"  # আপনি চাইলে এটি পরিবর্তন করতে পারেন
+
+    # ইউজারের ডাটা আপডেট করা যাতে ২এফএ জমা দেওয়ার সময় কাজে লাগে
+    await state.update_data(auto_user=new_username, auto_pass=fixed_password, category=category)
+
+    # ইউজারকে ইনলাইন কিবোর্ড সহ মেসেজ পাঠানো
+    inline_kb = types.InlineKeyboardMarkup(row_width=1)
+    btn_2fa = types.InlineKeyboardButton("🔐 2FA কোড দিন", callback_data="ask_auto_2fa")
+    inline_kb.add(btn_2fa)
+
+    response_text = (
+        f"<b>✅ নতুন {category} কাজ বরাদ্দ করা হয়েছে:</b>\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"<b>👤 Username:</b> <code>{new_username}</code>\n"
+        f"<b>🔑 Password:</b> <code>{fixed_password}</code>\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"<i>💡 আইডি লগইন করে ২এফএ কোডটি নিচের বাটনে ক্লিক করে দিন।</i>"
     )
-    # ২. "➕ আরেকটি পাঠান" বাটনের কাজ (অটোমেটিক সিস্টেমের জন্য সংশোধিত)
-@dp.message_handler(lambda message: "➕ আরেকটি" in message.text, state="*")
-async def send_another_id(message: types.Message, state: FSMContext):
-    # বাটন থেকে ক্যাটাগরির নাম আলাদা করা (যেমন: IG 2fa)
-    text = message.text
-    category_name = text.replace("➕ আরেকটি ", "").replace(" পাঠান", "").strip()
-    
-    # ১. আগের স্টেট ক্লিয়ার করা
-    await state.finish() 
-    
-    # ২. সরাসরি অটো ওয়ার্ক ফাংশনটি কল করা যাতে ইউজারকে নতুন আইডি দেয়
-    # এই ফাংশনটি আপনার কোডে অলরেডি আছে যা ডাটাবেস থেকে আইডি খুঁজে বের করে
-    await start_auto_ig_work(message, state, category_name)
+
+    await message.answer(response_text, reply_markup=inline_kb, parse_mode="HTML")
     
 # ৩. রিফ্রেশ বাটনের লজিক (state="*" যোগ করা হয়েছে যাতে যেকোনো অবস্থায় এটি কাজ করে)
 @dp.message_handler(lambda message: message.text == "🔄 রিফ্রেশ", state="*")
