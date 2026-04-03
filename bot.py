@@ -1242,74 +1242,58 @@ async def ask_single_uid(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
 
 # --- ২. UID রিসিভ করে Password চাইবে ---
+# --- ১. প্রথমে UID নেওয়ার পর Password চাওয়ার কোড ---
 @dp.message_handler(state=BotState.waiting_for_single_user)
-async def ask_single_pass(message: types.Message, state: FSMContext):
-    # ইউজারের দেওয়া UID মেমোরিতে সেভ রাখা হলো
-    await state.update_data(fb_uid=message.text)
-    
-    await BotState.waiting_for_single_pass.set() # Password নেওয়ার স্টেট চালু
-    await message.answer("🔑 **এবার আইডির পাসওয়ার্ড (Password) দিন:**", parse_mode="Markdown")
+async def get_uid(message: types.Message, state: FSMContext):
+    await state.update_data(fb_uid=message.text) # UID সেভ করা হলো
+    await BotState.waiting_for_single_pass.set() # পাসওয়ার্ড চাওয়ার স্টেট
+    await message.answer("🔑 **আইডির পাসওয়ার্ড (Password) দিন:**")
 
-# --- ৩. Password রিসিভ করে 2FA চাইবে ---
+# --- ২. Password নেওয়ার পর 2FA চাওয়ার কোড ---
 @dp.message_handler(state=BotState.waiting_for_single_pass)
-async def ask_single_2fa(message: types.Message, state: FSMContext):
-    # ইউজারের দেওয়া Password মেমোরিতে সেভ রাখা হলো
-    await state.update_data(fb_pass=message.text)
-    
-    await BotState.waiting_for_single_2fa.set() # 2FA নেওয়ার স্টেট চালু
-    await message.answer("🔐 **সবশেষে আইডির 2FA কোডটি দিন:**", parse_mode="Markdown")
+async def get_pass(message: types.Message, state: FSMContext):
+    await state.update_data(fb_pass=message.text) # পাসওয়ার্ড সেভ করা হলো
+    await BotState.waiting_for_single_2fa.set() # 2FA চাওয়ার স্টেট
+    await message.answer("🔐 **আইডির 2FA কোডটি দিন:**")
 
-# --- ৪. 2FA রিসিভ করে সব একসাথে অ্যাডমিনকে পাঠাবে ---
+# --- ৩. সবশেষে 2FA পাওয়ার পর এডমিনের কাছে পাঠানো ---
 @dp.message_handler(state=BotState.waiting_for_single_2fa)
-async def process_final_single_id(message: types.Message, state: FSMContext):
-    # মেমোরি থেকে আগের সেভ করা UID, Password এবং Category নিয়ে আসা
-    data = await state.get_data()
-    fb_uid = data.get('fb_uid')
-    fb_pass = data.get('fb_pass')
-    fb_2fa = message.text
-    category = data.get('category', 'FB 00 Fnd 2fa')
+async def send_to_admin(message: types.Message, state: FSMContext):
+    # মেমোরি থেকে আগের ডাটাগুলো নেওয়া
+    user_data = await state.get_data()
+    uid = user_data.get('fb_uid')
+    pw = user_data.get('fb_pass')
+    two_fa = message.text # শেষ মেসেজটি হলো 2FA
+    category = user_data.get('category', 'FB 00 Fnd 2fa')
     
-    # ইউজারনেম সেট করা (যাতে না থাকলে No_Username দেখায়)
-    username = f"@{message.from_user.username}" if message.from_user.username else "No_Username"
-
-    # অ্যাডমিনকে পাঠানোর জন্য মেসেজ সাজানো
-    admin_text = (
-        f"🚀 **নতুন সিঙ্গেল আইডি জমা পড়েছে!**\n"
+    # অ্যাডমিনকে পাঠানোর মেসেজ ফরম্যাট
+    admin_report = (
+        f"✅ **নতুন সিঙ্গেল আইডি জমা হয়েছে!**\n"
         f"━━━━━━━━━━━━━━━\n"
         f"👤 নাম: {message.from_user.full_name}\n"
-        f"🔗 ইউজারনেম: {username}\n"
-        f"🆔 বট আইডি: `{message.from_user.id}`\n"
-        f"📂 ক্যাটাগরি: **{category}**\n"
+        f"🆔 আইডি: `{message.from_user.id}`\n"
+        f"📂 ক্যাটাগরি: {category}\n"
         f"━━━━━━━━━━━━━━━\n"
-        f"📌 **UID:** `{fb_uid}`\n"
-        f"🔑 **Pass:** `{fb_pass}`\n"
-        f"🔐 **2FA:** `{fb_2fa}`\n"
+        f"📌 UID: `{uid}`\n"
+        f"🔑 Pass: `{pw}`\n"
+        f"🔐 2FA: `{two_fa}`\n"
         f"━━━━━━━━━━━━━━━\n"
-        f"📝 **কপি ফরম্যাট:**\n`{fb_uid}|{fb_pass}|{fb_2fa}`"
+        f"📝 কপি ফরম্যাট:\n`{uid}|{pw}|{two_fa}`"
     )
-    
-    # অ্যাডমিনের জন্য টাকা এড করার বাটন
-    keyboard = types.InlineKeyboardMarkup()
-    keyboard.add(types.InlineKeyboardButton("Add Money 💰", callback_data=f"adminadd_{message.from_user.id}"))
 
-    # অ্যাডমিনকে মেসেজ পাঠানো
+    # অ্যাডমিনকে মেসেজ পাঠানো (নিশ্চিত হোন FILE_ADMIN_ID আপনার কোডে ঠিক আছে)
     try:
-        await bot.send_message(FILE_ADMIN_ID, admin_text, reply_markup=keyboard, parse_mode="Markdown")
+        await bot.send_message(FILE_ADMIN_ID, admin_report, parse_mode="Markdown")
+        
+        # ইউজারকে কনফার্ম করা
+        await message.answer("✅ আপনার আইডিটি সফলভাবে জমা হয়েছে! অ্যাডমিন চেক করে ব্যালেন্স দিয়ে দিবে।", reply_markup=main_menu())
     except Exception as e:
-        print(f"অ্যাডমিনকে মেসেজ পাঠাতে এরর: {e}")
+        print(f"Error sending to admin: {e}")
+        await message.answer("❌ কারিগরি ত্রুটির কারণে অ্যাডমিনকে জানানো যায়নি।")
 
-    # লোকাল ডাটাবেসে আজকের কাজের হিসাব (stats) আপডেট করা
-    import datetime
-    today = datetime.date.today().strftime("%Y-%m-%d")
-    cursor.execute("INSERT OR IGNORE INTO stats (user_id, date) VALUES (?, ?)", (message.from_user.id, today))
-    cursor.execute("UPDATE stats SET single_id_count = single_id_count + 1 WHERE user_id=? AND date=?", (message.from_user.id, today))
-    db.commit()
-
-    # ইউজারকে সাকসেস মেসেজ দেওয়া
-    await message.answer("✅ আপনার আইডি সফলভাবে জমা হয়েছে! \n🔥এডমিন চেক করে ব্যালেন্স এড করে দিবে।", reply_markup=main_menu())
-    
-    # কাজ শেষ, তাই স্টেট ফিনিশ করে দেওয়া
+    # সব শেষ হলে স্টেট ক্লিয়ার করা
     await state.finish()
+        
         # --- ১. ফাইল বাটনে ক্লিক করলে এই হ্যান্ডলারটি কাজ করবে ---
 @dp.callback_query_handler(lambda c: c.data == "type_file", state="*")
 async def ask_for_file(call: types.CallbackQuery, state: FSMContext):
