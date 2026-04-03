@@ -1231,7 +1231,129 @@ async def work_v2_options(message: types.Message, state: FSMContext):
     )
     
     await message.answer(msg_text, reply_markup=inline_kb, parse_mode="Markdown")
-                          
+            # --- ১. সিঙ্গেল আইডি বাটনে ক্লিক করলে প্রথমে UID চাইবে ---
+@dp.callback_query_handler(lambda c: c.data == "type_single", state="*")
+async def ask_single_uid(call: types.CallbackQuery, state: FSMContext):
+    await BotState.waiting_for_single_user.set() # UID নেওয়ার স্টেট চালু
+    await call.message.edit_text(
+        "🆔 **অনুগ্রহ করে আপনার আইডির UID (User ID/Number) দিন:**", 
+        parse_mode="Markdown"
+    )
+    await call.answer()
+
+# --- ২. UID রিসিভ করে Password চাইবে ---
+@dp.message_handler(state=BotState.waiting_for_single_user)
+async def ask_single_pass(message: types.Message, state: FSMContext):
+    # ইউজারের দেওয়া UID মেমোরিতে সেভ রাখা হলো
+    await state.update_data(fb_uid=message.text)
+    
+    await BotState.waiting_for_single_pass.set() # Password নেওয়ার স্টেট চালু
+    await message.answer("🔑 **এবার আইডির পাসওয়ার্ড (Password) দিন:**", parse_mode="Markdown")
+
+# --- ৩. Password রিসিভ করে 2FA চাইবে ---
+@dp.message_handler(state=BotState.waiting_for_single_pass)
+async def ask_single_2fa(message: types.Message, state: FSMContext):
+    # ইউজারের দেওয়া Password মেমোরিতে সেভ রাখা হলো
+    await state.update_data(fb_pass=message.text)
+    
+    await BotState.waiting_for_single_2fa.set() # 2FA নেওয়ার স্টেট চালু
+    await message.answer("🔐 **সবশেষে আইডির 2FA কোডটি দিন:**", parse_mode="Markdown")
+
+# --- ৪. 2FA রিসিভ করে সব একসাথে অ্যাডমিনকে পাঠাবে ---
+@dp.message_handler(state=BotState.waiting_for_single_2fa)
+async def process_final_single_id(message: types.Message, state: FSMContext):
+    # মেমোরি থেকে আগের সেভ করা UID, Password এবং Category নিয়ে আসা
+    data = await state.get_data()
+    fb_uid = data.get('fb_uid')
+    fb_pass = data.get('fb_pass')
+    fb_2fa = message.text
+    category = data.get('category', 'FB 00 Fnd 2fa')
+    
+    # ইউজারনেম সেট করা (যাতে না থাকলে No_Username দেখায়)
+    username = f"@{message.from_user.username}" if message.from_user.username else "No_Username"
+
+    # অ্যাডমিনকে পাঠানোর জন্য মেসেজ সাজানো
+    admin_text = (
+        f"🚀 **নতুন সিঙ্গেল আইডি জমা পড়েছে!**\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"👤 নাম: {message.from_user.full_name}\n"
+        f"🔗 ইউজারনেম: {username}\n"
+        f"🆔 বট আইডি: `{message.from_user.id}`\n"
+        f"📂 ক্যাটাগরি: **{category}**\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"📌 **UID:** `{fb_uid}`\n"
+        f"🔑 **Pass:** `{fb_pass}`\n"
+        f"🔐 **2FA:** `{fb_2fa}`\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"📝 **কপি ফরম্যাট:**\n`{fb_uid}|{fb_pass}|{fb_2fa}`"
+    )
+    
+    # অ্যাডমিনের জন্য টাকা এড করার বাটন
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton("Add Money 💰", callback_data=f"adminadd_{message.from_user.id}"))
+
+    # অ্যাডমিনকে মেসেজ পাঠানো
+    try:
+        await bot.send_message(FILE_ADMIN_ID, admin_text, reply_markup=keyboard, parse_mode="Markdown")
+    except Exception as e:
+        print(f"অ্যাডমিনকে মেসেজ পাঠাতে এরর: {e}")
+
+    # লোকাল ডাটাবেসে আজকের কাজের হিসাব (stats) আপডেট করা
+    import datetime
+    today = datetime.date.today().strftime("%Y-%m-%d")
+    cursor.execute("INSERT OR IGNORE INTO stats (user_id, date) VALUES (?, ?)", (message.from_user.id, today))
+    cursor.execute("UPDATE stats SET single_id_count = single_id_count + 1 WHERE user_id=? AND date=?", (message.from_user.id, today))
+    db.commit()
+
+    # ইউজারকে সাকসেস মেসেজ দেওয়া
+    await message.answer("✅ আপনার আইডি সফলভাবে জমা হয়েছে! \n🔥এডমিন চেক করে ব্যালেন্স এড করে দিবে।", reply_markup=main_menu())
+    
+    # কাজ শেষ, তাই স্টেট ফিনিশ করে দেওয়া
+    await state.finish()
+        # --- ১. ফাইল বাটনে ক্লিক করলে এই হ্যান্ডলারটি কাজ করবে ---
+@dp.callback_query_handler(lambda c: c.data == "type_file", state="*")
+async def ask_for_file(call: types.CallbackQuery, state: FSMContext):
+    await BotState.waiting_for_file.set() # ফাইল রিসিভ করার স্টেট সেট করা
+    await call.message.edit_text(
+        "📂 **অনুগ্রহ করে আপনার কাজের ফাইলটি (.txt বা Excel) এখানে পাঠান:**\n\n"
+        "⚠️ ফাইলটি সরাসরি এই চ্যাটে আপলোড করুন।", 
+        parse_mode="Markdown"
+    )
+    await call.answer()
+
+# --- ২. ইউজার যখন ফাইল পাঠাবে, তখন এই হ্যান্ডলারটি সেটি রিসিভ করবে ---
+@dp.message_handler(content_types=['document'], state=BotState.waiting_for_file)
+async def process_uploaded_file(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    category = data.get('category', 'FB 00 Fnd 2fa') # কাজের ক্যাটাগরি
+    
+    # অ্যাডমিনকে ফাইলটি ফরোয়ার্ড করা
+    caption = (
+        f"📩 **নতুন ফাইল জমা পড়েছে!**\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"👤 নাম: {message.from_user.full_name}\n"
+        f"🔗 ইউজারনেম: @{message.from_user.username if message.from_user.username else 'N/A'}\n"
+        f"🆔 ইউজার আইডি: `{message.from_user.id}`\n"
+        f"📂 ক্যাটাগরি: **{category}**"
+    )
+    
+    # অ্যাডমিনের জন্য পেমেন্ট বাটন
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton("Add Money 💰", callback_data=f"adminadd_{message.from_user.id}"))
+
+    # অ্যাডমিন আইডিতে (FILE_ADMIN_ID) ফাইল পাঠানো
+    try:
+        await bot.send_document(FILE_ADMIN_ID, message.document.file_id, caption=caption, reply_markup=keyboard, parse_mode="Markdown")
+        
+        # ইউজারকে কনফার্মেশন দেওয়া
+        await message.answer("✅ আপনার ফাইলটি সফলভাবে অ্যাডমিনের কাছে পাঠানো হয়েছে! চেক করে ব্যালেন্স দেওয়া হবে।", reply_markup=main_menu())
+    except Exception as e:
+        await message.answer("❌ ফাইল পাঠাতে সমস্যা হয়েছে। দয়া করে অ্যাডমিনকে জানান।")
+        print(f"Error sending file: {e}")
+
+    # স্টেট ক্লিয়ার করা
+    await state.finish()
+
 #মেসেজ
 @dp.message_handler(commands=['msg'], user_id=ADMIN_ID)
 async def admin_direct_msg(message: types.Message):
