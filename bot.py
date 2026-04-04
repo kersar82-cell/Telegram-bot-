@@ -1431,27 +1431,24 @@ async def show_only_rules(message: types.Message):
 async def show_user_status(message: types.Message):
     user_id = message.from_user.id
     
-    # ১. ডাটাবেস থেকে ব্যালেন্স এবং সব পেমেন্ট মেথড একসাথে আনা
+    # ডাটাবেস থেকে তথ্য আনা (আপনার দেওয়া কুয়েরি)
     cursor.execute("""SELECT balance, pending_balance, bkash_num, nagad_num, 
                       rocket_num, binance_id, recharge_num 
                       FROM users WHERE user_id = ?""", (user_id,))
     user_data = cursor.fetchone()
     
-    # ডাটা সেট করা (যদি ইউজার না থাকে তবে ডিফল্ট মান)
     if user_data:
         balance, pending_balance, bkash, nagad, rocket, binance, recharge = user_data
     else:
         balance = pending_balance = 0
         bkash = nagad = rocket = binance = recharge = None
 
-    # স্ট্যাটাস টেবিল থেকে ফাইল এবং আইডি সংখ্যা আনা
     cursor.execute("SELECT file_count, single_id_count FROM stats WHERE user_id = ?", (user_id,))
     stats_data = cursor.fetchone()
-    
     file_count = stats_data[0] if stats_data else 0
     single_id_count = stats_data[1] if stats_data else 0
 
-    # ২. মেসেজ ফরম্যাট (পেমেন্ট মেথডসহ)
+    # মেসেজ ফরম্যাট (এখানেই শুধু পরিবর্তন করা হয়েছে যাতে 'Not Set' থাকলে 'সেট নেই' দেখায়)
     status_msg = (
         f"👤 **আপনার প্রোফাইল স্ট্যাটাস**\n"
         f"━━━━━━━━━━━━━━━━━━\n"
@@ -1463,17 +1460,17 @@ async def show_user_status(message: types.Message):
         f"🆔 **সিঙ্গেল আইডি:** {single_id_count} টি\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"💳 **সেভ করা পেমেন্ট মেথড:**\n"
-        f"📱 রিচার্জ: `{recharge if recharge else 'সেট নেই'}`\n"
-        f"🟢 বিকাশ: `{bkash if bkash else 'সেট নেই'}`\n"
-        f"🟠 নগদ: `{nagad if nagad else 'সেট নেই'}`\n"
-        f"💜 রকেট: `{rocket if rocket else 'সেট নেই'}`\n"
-        f"🟡 বিন্যান্স: `{binance if binance else 'সেট নেই'}`\n"
+        f"📱 রিচার্জ: `{recharge if (recharge and recharge != 'Not Set') else 'সেট নেই'}`\n"
+        f"🟢 বিকাশ: `{bkash if (bkash and bkash != 'Not Set') else 'সেট নেই'}`\n"
+        f"🟠 নগদ: `{nagad if (nagad and nagad != 'Not Set') else 'সেট নেই'}`\n"
+        f"💜 রকেট: `{rocket if (rocket and rocket != 'Not Set') else 'সেট নেই'}`\n"
+        f"🟡 বিন্যান্স: `{binance if (binance and binance != 'Not Set') else 'সেট নেই'}`\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"পেন্ডিং ব্যালেন্স এডমিন চেক করে মেইন ব্যালেন্সে দিয়ে দিবে। 🔥"
     )
     
     await message.answer(status_msg, parse_mode="Markdown")
-                    
+                              
     # এডমিন প্যানেল থেকে ইউজারের মেসেজ দেখার কমান্ড
 @dp.message_handler(commands=['userlogs'], user_id=ADMIN_ID)
 async def get_user_history(message: types.Message):
