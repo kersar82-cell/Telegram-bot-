@@ -158,6 +158,14 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS ids
                    u_pass TEXT, 
                    status TEXT DEFAULT 'Pending')''')
 db.commit()
+# --- ধাপ ১: ডাটাবেসে পেমেন্ট মেথড কলাম যোগ করা ---
+new_columns = ["bkash_num", "nagad_num", "rocket_num", "binance_id", "recharge_num"]
+for col in new_columns:
+    try:
+        cursor.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT")
+        db.commit()
+    except Exception:
+        pass # যদি কলাম আগে থেকেই থাকে, তবে এরর ইগনোর করে পরের কলামটি চেক করবে
 
 class BotState(StatesGroup):
     waiting_for_file = State()
@@ -916,7 +924,7 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
     if amount > int(balance):
         return await message.answer(f"❌ আপনার ব্যালেন্স পর্যাপ্ত নয়! বর্তমান: {int(balance)} ৳")
     
-    if amount <= 0:
+    if amount <= 19:
         return await message.answer("❌ সর্বনিম্ন ১ টাকা উইথড্র করা যাবে।")
 
     # ৪. স্টেট থেকে উইথড্র টাইপ (Recharge নাকি Send Money) নেওয়া
