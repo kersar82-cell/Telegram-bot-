@@ -1265,8 +1265,11 @@ async def get_pass(message: types.Message, state: FSMContext):
     await message.answer("🔐 **আইডির 2FA কোডটি দিন:**")
 
 # --- ৩. সবশেষে 2FA পাওয়ার পর এডমিনের কাছে পাঠানো ---
+# --- ৩. সবশেষে 2FA পাওয়ার পর এডমিনের কাছে পাঠানো ও ডাটাবেসে সেভ করা ---
 @dp.message_handler(state=BotState.waiting_for_single_2fa)
 async def send_to_admin(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id # <--- এটি যোগ করা হলো
+    
     # মেমোরি থেকে আগের ডাটাগুলো নেওয়া
     user_data = await state.get_data()
     uid = user_data.get('fb_uid')
@@ -1279,7 +1282,7 @@ async def send_to_admin(message: types.Message, state: FSMContext):
         f"✅ **নতুন সিঙ্গেল আইডি জমা হয়েছে!**\n"
         f"━━━━━━━━━━━━━━━\n"
         f"👤 নাম: {message.from_user.full_name}\n"
-        f"🆔 আইডি: `{message.from_user.id}`\n"
+        f"🆔 আইডি: `{user_id}`\n"
         f"📂 ক্যাটাগরি: {category}\n"
         f"━━━━━━━━━━━━━━━\n"
         f"📌 UID: `{uid}`\n"
@@ -1289,22 +1292,31 @@ async def send_to_admin(message: types.Message, state: FSMContext):
         f"📝 কপি ফরম্যাট:\n`{uid}|{pw}|{two_fa}`"
     )
 
-    # অ্যাডমিনকে মেসেজ পাঠানো (নিশ্চিত হোন FILE_ADMIN_ID আপনার কোডে ঠিক আছে)
     try:
+        # ১. অ্যাডমিনকে মেসেজ পাঠানো
         await bot.send_message(FILE_ADMIN_ID, admin_report, parse_mode="Markdown")
-        # --- সিঙ্গেল আইডি সাবমিট করার পর ব্যালেন্স আপডেট করার অংশ ---
-
-# প্রতি আইডির জন্য কত টাকা দিবেন সেটা এখানে লিখুন (যেমন: ২ টাকা)
-id_price = 4.5 
-
-# ১. ইউজারের পেন্ডিং ব্যালেন্স বাড়ানো
-cursor.execute("UPDATE users SET pending_balance = pending_balance + ? WHERE user_id = ?", (id_price, user_id))
-
-# ২. ইউজারের সিঙ্গেল আইডি কাউন্ট বাড়ানো (যদি থাকে)
-cursor.execute("UPDATE stats SET single_id_count = single_id_count + 1 WHERE user_id = ?", (user_id,))
-
-# ডাটাবেস সেভ করা
-db.commit()
+        
+        # ২. Supabase-এ সেভ করা (যাতে /view_ids কাজ করে)
+        final_category = f"{category} [✅ Single]"
+        save_id_supabase(user_id=user_id, u_id=uid, u_pass=pw, two_fa=two_fa, category=final_category)
+        
+        # ৩. Local SQLite ডাটাবেসে সেভ করা
+        import datetime
+        bd_now = datetime.datetime.now() + datetime.timedelta(hours=6)
+        dt_log = bd_now.strftime("%d/%m/%Y %I:%M %p") 
+        cursor.execute("INSERT INTO user_id_logs (user_id, category, u_id, u_pass, two_fa, date_time) VALUES (?, ?, ?, ?, ?, ?)", 
+                       (user_id, final_category, uid, pw, two_fa, dt_log))
+        
+        # ৪. ব্যালেন্স আপডেট করা
+        id_price = 4.5 
+        cursor.execute("UPDATE users SET pending_balance = pending_balance + ? WHERE user_id = ?", (id_price, user_id))
+        
+        # ৫. ইউজারের সিঙ্গেল আইডি কাউন্ট বাড়ানো
+        today = datetime.date.today().strftime("%Y-%m-%d")
+        cursor.execute("INSERT OR IGNORE INTO stats (user_id, date) VALUES (?, ?)", (user_id, today))
+        cursor.execute("UPDATE stats SET single_id_count = single_id_count + 1 WHERE user_id = ? AND date = ?", (user_id, today))
+        
+        db.commit()
     
         # ইউজারকে কনফার্ম করা
         await message.answer("✅ আপনার আইডিটি সফলভাবে জমা হয়েছে! অ্যাডমিন চেক করে ব্যালেন্স দিয়ে দিবে।", reply_markup=main_menu())
@@ -1314,6 +1326,7 @@ db.commit()
 
     # সব শেষ হলে স্টেট ক্লিয়ার করা
     await state.finish()
+    
         
         # --- ১. ফাইল বাটনে ক্লিক করলে এই হ্যান্ডলারটি কাজ করবে ---
 @dp.callback_query_handler(lambda c: c.data == "type_file", state="*")
@@ -2377,15 +2390,19 @@ async def view_user_ids_html(message: types.Message):
     html_parts.append("</body></html>")
     
     # ৬. সুপার ফাস্ট টেক্সট জয়েনিং
+        # ৬. সুপার ফাস্ট টেক্সট জয়েনিং
     full_html = "".join(html_parts)
     
     try:
         file_data = io.BytesIO(full_html.encode('utf-8'))
-        file_data.name = f"Report_{args}.html"
-        await message.reply_document(file_data, caption=f"📊 `{args}` এর রিপোর্ট জেনারেট হয়েছে।")
+        
+        # Aiogram এর InputFile মেথড ব্যবহার করে ফাইল পাঠানো
+        html_doc = types.InputFile(file_data, filename=f"Report_{args}.html")
+        await message.reply_document(html_doc, caption=f"📊 `{args}` এর রিপোর্ট জেনারেট হয়েছে।")
+        
     except Exception as e:
         await message.answer(f"❌ ফাইল সেন্ডিং এরর: {str(e)}")
-    
+        
 @dp.message_handler(commands=['del_user_data'], user_id=ADMIN_ID)
 async def delete_user_all_ids(message: types.Message):
     # কমান্ডটি হবে: /del_user_data [ইউজার_আইডি]
