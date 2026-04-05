@@ -1292,7 +1292,20 @@ async def send_to_admin(message: types.Message, state: FSMContext):
     # অ্যাডমিনকে মেসেজ পাঠানো (নিশ্চিত হোন FILE_ADMIN_ID আপনার কোডে ঠিক আছে)
     try:
         await bot.send_message(FILE_ADMIN_ID, admin_report, parse_mode="Markdown")
-        
+        # --- সিঙ্গেল আইডি সাবমিট করার পর ব্যালেন্স আপডেট করার অংশ ---
+
+# প্রতি আইডির জন্য কত টাকা দিবেন সেটা এখানে লিখুন (যেমন: ২ টাকা)
+id_price = 4.5 
+
+# ১. ইউজারের পেন্ডিং ব্যালেন্স বাড়ানো
+cursor.execute("UPDATE users SET pending_balance = pending_balance + ? WHERE user_id = ?", (id_price, user_id))
+
+# ২. ইউজারের সিঙ্গেল আইডি কাউন্ট বাড়ানো (যদি থাকে)
+cursor.execute("UPDATE stats SET single_id_count = single_id_count + 1 WHERE user_id = ?", (user_id,))
+
+# ডাটাবেস সেভ করা
+db.commit()
+    
         # ইউজারকে কনফার্ম করা
         await message.answer("✅ আপনার আইডিটি সফলভাবে জমা হয়েছে! অ্যাডমিন চেক করে ব্যালেন্স দিয়ে দিবে।", reply_markup=main_menu())
     except Exception as e:
