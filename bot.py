@@ -10,8 +10,8 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from supabase import create_client, Client
 
 # আপনার ডাটাবেস তথ্য
-SUPABASE_URL = "https://mxxxnwnberhhnpgfmzml.supabase.co"
-SUPABASE_KEY = "sb_publishable_NhIUA5uUQMKB7wBhxH2oxg_myQWFWJ0"
+SUPABASE_URL = "https://wvczkeugwcfhyizibafs.supabase.co"
+SUPABASE_KEY = "sb_publishable_GDshun93XOcy7LhxjA-nBQ_3riyH-RR"
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 def save_id_supabase(user_id, u_id, u_pass, two_fa, category):
