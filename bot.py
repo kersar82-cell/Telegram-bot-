@@ -29,7 +29,18 @@ def save_id_supabase(user_id, u_id, u_pass, two_fa, category):
     except Exception as e:
         print(f"সেভ করতে সমস্যা হয়েছে: {e}")
         return False
-
+def save_user_start(user_id, first_name):
+    try:
+        # 'user_list' নামে একটি টেবিল সুপাবেসে থাকতে হবে
+        # যেখানে user_id হবে Primary Key
+        data = {
+            "user_id": str(user_id),
+            "name": str(first_name)
+        }
+        supabase.table("user_list").upsert(data).execute()
+    except Exception as e:
+        print(f"Error saving user: {e}")
+                    
 # ==========================================
 # ১. সেটিংস ও ডাটাবেস
 # ==========================================
@@ -262,7 +273,8 @@ async def start(message: types.Message, state: FSMContext):
     await state.finish()
        
     user_id = message.from_user.id
-            # গ্রুপে জয়েন আছে কি না চেক
+            
+    # গ্রুপে জয়েন আছে কি না চেক
     is_joined = await check_joined(user_id)
     if not is_joined:
         keyboard = types.InlineKeyboardMarkup()
