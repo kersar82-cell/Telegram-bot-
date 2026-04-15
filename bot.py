@@ -11,7 +11,7 @@ from supabase import create_client, Client
 
 # আপনার ডাটাবেস তথ্য
 SUPABASE_URL = "https://wvczkeugwcfhyizibafs.supabase.co"
-SUPABASE_KEY = "sb_publishable_GDshun93XOcy7LhxjA-nBQ_3riyH-RR"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2Y3prZXVnd2NmaHlpemliYWZzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjE2NzQ1NywiZXhwIjoyMDkxNzQzNDU3fQ.xERE9HIq7fttGUaow9VwKn_A1YaoRr-w7OMf4eFJm3I"
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 def save_id_supabase(user_id, u_id, u_pass, two_fa, category):
