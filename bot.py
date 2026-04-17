@@ -1040,17 +1040,15 @@ async def admin_search(message: types.Message):
             await message.answer("❌ ডাটাবেসে এই ইউজার পাওয়া যায়নি।")
     except ValueError:
         await message.answer("❌ আইডি শুধুমাত্র সংখ্যা হতে হবে।")
-                       
-        # ১. কমান্ড দিয়ে ব্লক করা: /block 12345678
+# ১. কমান্ড দিয়ে ব্লক করা: /block 12345678
 @dp.message_handler(commands=['block'], user_id=ADMIN_ID)
 async def admin_block(message: types.Message, state: FSMContext):
     try:
         # কমান্ড থেকে ইউজার আইডি নেওয়া
         uid = int(message.get_args())
         
-        # ডাটাবেসে ব্লক হিসেবে সেভ করা
-        cursor.execute("INSERT OR IGNORE INTO blacklist (user_id) VALUES (?)", (uid,))
-        db.commit()
+        # Supabase-এর blacklist টেবিলে সেভ করা (upsert ব্যবহার করা হলো যাতে আগে থেকে থাকলে এরর না দেয়)
+        await asyncio.to_thread(supabase.table("blacklist").upsert({"user_id": uid}).execute)
         
         # কারণ পাঠানোর জন্য আইডিটি সাময়িকভাবে সেভ রাখা
         await state.update_data(blocking_user_id=uid)
@@ -1068,18 +1066,22 @@ async def admin_block(message: types.Message, state: FSMContext):
 async def admin_unblock(message: types.Message):
     try:
         uid = int(message.get_args())
-        cursor.execute("DELETE FROM blacklist WHERE user_id=?", (uid,))
-        db.commit()
+        
+        # Supabase থেকে আনব্লক (ডিলিট) করা
+        await asyncio.to_thread(supabase.table("blacklist").delete().eq("user_id", uid).execute)
+        
         await message.answer(f"✅ ইউজার `{uid}` এখন আনব্লক।")
         await bot.send_message(uid, "✅ আপনাকে আনব্লক করা হয়েছে।\nআর ভুল করবেন না❌")
         
-    except: await message.answer("সঠিক ফরম্যাট: `/unblock আইডি`")
+    except: 
+        await message.answer("সঠিক ফরম্যাট: `/unblock আইডি`")
+
 @dp.callback_query_handler(lambda c: c.data.startswith('block_'), user_id=ADMIN_ID)
 async def block_callback(call: types.CallbackQuery, state: FSMContext):
     uid = int(call.data.split('_')[1])
-    # ডাটাবেসে ব্লক করা
-    cursor.execute("INSERT OR IGNORE INTO blacklist (user_id) VALUES (?)", (uid,))
-    db.commit()
+    
+    # Supabase-এর blacklist টেবিলে সেভ করা
+    await asyncio.to_thread(supabase.table("blacklist").upsert({"user_id": uid}).execute)
     
     # ইউজার আইডি সেভ রাখা
     await state.update_data(blocking_user_id=uid)
@@ -1103,6 +1105,8 @@ async def send_block_reason(message: types.Message, state: FSMContext):
         await state.finish()
     except:
         await message.answer(f"⚠️ ইউজার `{uid}` কে মেসেজ পাঠানো যায়নি।")
+        await state.finish() # এরর হলেও স্টেট ক্লিয়ার করা ভালো
+
 @dp.message_handler(commands=['edit_ref'], user_id=ADMIN_ID)
 async def admin_edit_referral(message: types.Message):
     try:
@@ -1111,15 +1115,19 @@ async def admin_edit_referral(message: types.Message):
             return await message.answer("⚠️ ফরম্যাট: `/edit_ref আইডি সংখ্যা`")
         
         target_id, new_count = int(args[0]), int(args[1])
-        cursor.execute("UPDATE users SET referral_count = ? WHERE user_id = ?", (new_count, target_id))
-        db.commit()
+        
+        # Supabase-এর balances টেবিলে রেফারেল সংখ্যা আপডেট করা
+        await asyncio.to_thread(supabase.table("balances").update({"referral_count": new_count}).eq("user_id", target_id).execute)
         
         await message.answer(f"✅ ইউজার `{target_id}` এর রেফারেল সংখ্যা আপডেট করে `{new_count}` করা হয়েছে।")
         try:
             await bot.send_message(target_id, f"📢 আপনার মোট রেফারেল সংখ্যা আপডেট করা হয়েছে।\nবর্তমান রেফারেল: {new_count} জন।")
-        except: pass
+        except: 
+            pass
     except:
         await message.answer("❌ ভুল আইডি বা সংখ্যা।")
+    
+
     # 'Support' বাটনে ক্লিক করলে যা শো করবে (হাইপারলিঙ্ক সহ)
 @dp.message_handler(lambda message: message.text == "☎️SUPPORT")
 async def support_message(message: types.Message):
@@ -1204,10 +1212,9 @@ async def get_pass(message: types.Message, state: FSMContext):
     await message.answer("🔐 **আইডির 2FA কোডটি দিন:**")
 
 # --- ৩. সবশেষে 2FA পাওয়ার পর এডমিনের কাছে পাঠানো ---
-# --- ৩. সবশেষে 2FA পাওয়ার পর এডমিনের কাছে পাঠানো ও ডাটাবেসে সেভ করা ---
 @dp.message_handler(state=BotState.waiting_for_single_2fa)
 async def send_to_admin(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id # <--- এটি যোগ করা হলো
+    user_id = message.from_user.id 
     
     # মেমোরি থেকে আগের ডাটাগুলো নেওয়া
     user_data = await state.get_data()
@@ -1235,28 +1242,40 @@ async def send_to_admin(message: types.Message, state: FSMContext):
         # ১. অ্যাডমিনকে মেসেজ পাঠানো
         await bot.send_message(FILE_ADMIN_ID, admin_report, parse_mode="Markdown")
         
-        # ২. Supabase-এ সেভ করা (যাতে /view_ids কাজ করে)
         final_category = f"{category} [✅ Single]"
-        save_id_supabase(user_id=user_id, u_id=uid, u_pass=pw, two_fa=two_fa, category=final_category)
         
-        # ৩. Local SQLite ডাটাবেসে সেভ করা
+        # ২ ও ৩. Supabase-এর user_id_logs টেবিলে সরাসরি সেভ করা (SQLite এর বদলে)
         import datetime
         bd_now = datetime.datetime.now() + datetime.timedelta(hours=6)
         dt_log = bd_now.strftime("%d/%m/%Y %I:%M %p") 
-        cursor.execute("INSERT INTO user_id_logs (user_id, category, u_id, u_pass, two_fa, date_time) VALUES (?, ?, ?, ?, ?, ?)", 
-                       (user_id, final_category, uid, pw, two_fa, dt_log))
         
-        # ৪. ব্যালেন্স আপডেট করা
+        log_data = {
+            "user_id": user_id, 
+            "category": final_category, 
+            "u_id": str(uid), 
+            "u_pass": str(pw), 
+            "two_fa": str(two_fa), 
+            "date_time": dt_log
+        }
+        await asyncio.to_thread(supabase.table("user_id_logs").insert(log_data).execute)
+        
+        # ৪. ব্যালেন্স আপডেট করা (balances টেবিলের pending_balance এ)
         id_price = 4.5 
-        cursor.execute("UPDATE users SET pending_balance = pending_balance + ? WHERE user_id = ?", (id_price, user_id))
+        bal_res = await asyncio.to_thread(supabase.table("balances").select("pending_balance").eq("user_id", user_id).execute)
+        if bal_res.data:
+            current_pending = bal_res.data[0].get('pending_balance', 0)
+            await asyncio.to_thread(supabase.table("balances").update({"pending_balance": current_pending + id_price}).eq("user_id", user_id).execute)
         
-        # ৫. ইউজারের সিঙ্গেল আইডি কাউন্ট বাড়ানো
+        # ৫. ইউজারের সিঙ্গেল আইডি কাউন্ট বাড়ানো (daily_stats টেবিলে)
         today = datetime.date.today().strftime("%Y-%m-%d")
-        cursor.execute("INSERT OR IGNORE INTO stats (user_id, date) VALUES (?, ?)", (user_id, today))
-        cursor.execute("UPDATE stats SET single_id_count = single_id_count + 1 WHERE user_id = ? AND date = ?", (user_id, today))
+        stats_res = await asyncio.to_thread(supabase.table("daily_stats").select("single_id_count").eq("user_id", user_id).eq("date", today).execute)
         
-        db.commit()
-    
+        if stats_res.data:
+            current_count = stats_res.data[0].get('single_id_count', 0)
+            await asyncio.to_thread(supabase.table("daily_stats").update({"single_id_count": current_count + 1}).eq("user_id", user_id).eq("date", today).execute)
+        else:
+            await asyncio.to_thread(supabase.table("daily_stats").insert({"user_id": user_id, "date": today, "single_id_count": 1}).execute)
+        
         # ইউজারকে কনফার্ম করা
         await message.answer("✅ আপনার আইডিটি সফলভাবে জমা হয়েছে! অ্যাডমিন চেক করে ব্যালেন্স দিয়ে দিবে।", reply_markup=main_menu())
     except Exception as e:
@@ -1265,7 +1284,7 @@ async def send_to_admin(message: types.Message, state: FSMContext):
 
     # সব শেষ হলে স্টেট ক্লিয়ার করা
     await state.finish()
-    
+            
         
         # --- ১. ফাইল বাটনে ক্লিক করলে এই হ্যান্ডলারটি কাজ করবে ---
 @dp.callback_query_handler(lambda c: c.data == "type_file", state="*")
