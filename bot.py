@@ -1367,24 +1367,39 @@ async def show_only_rules(message: types.Message):
 async def show_user_status(message: types.Message):
     user_id = message.from_user.id
     
-    # ডাটাবেস থেকে তথ্য আনা (আপনার দেওয়া কুয়েরি)
-    cursor.execute("""SELECT balance, pending_balance, bkash_num, nagad_num, 
-                      rocket_num, binance_id, recharge_num 
-                      FROM users WHERE user_id = ?""", (user_id,))
-    user_data = cursor.fetchone()
+    # ১. ব্যালেন্স ইনফো আনা (balances টেবিল থেকে)
+    balance_res = await asyncio.to_thread(supabase.table("balances").select("main_balance, pending_balance").eq("user_id", user_id).execute)
     
-    if user_data:
-        balance, pending_balance, bkash, nagad, rocket, binance, recharge = user_data
+    if balance_res.data:
+        balance = balance_res.data[0].get('main_balance', 0)
+        pending_balance = balance_res.data[0].get('pending_balance', 0)
     else:
         balance = pending_balance = 0
+
+    # ২. পেমেন্ট মেথড ইনফো আনা (payment_methods টেবিল থেকে)
+    payment_res = await asyncio.to_thread(supabase.table("payment_methods").select("bkash_num, nagad_num, rocket_num, binance_id, recharge_num").eq("user_id", user_id).execute)
+    
+    if payment_res.data:
+        p_data = payment_res.data[0]
+        bkash = p_data.get('bkash_num')
+        nagad = p_data.get('nagad_num')
+        rocket = p_data.get('rocket_num')
+        binance = p_data.get('binance_id')
+        recharge = p_data.get('recharge_num')
+    else:
         bkash = nagad = rocket = binance = recharge = None
 
-    cursor.execute("SELECT file_count, single_id_count FROM stats WHERE user_id = ?", (user_id,))
-    stats_data = cursor.fetchone()
-    file_count = stats_data[0] if stats_data else 0
-    single_id_count = stats_data[1] if stats_data else 0
+    # ৩. কাজের স্ট্যাটাস আনা (daily_stats টেবিল থেকে ইউজারের সব দিনের কাজের যোগফল)
+    stats_res = await asyncio.to_thread(supabase.table("daily_stats").select("file_count, single_id_count").eq("user_id", user_id).execute)
+    
+    if stats_res.data:
+        # যতদিনের কাজ আছে সবগুলোর count যোগ করা হচ্ছে
+        file_count = sum(item.get('file_count', 0) for item in stats_res.data)
+        single_id_count = sum(item.get('single_id_count', 0) for item in stats_res.data)
+    else:
+        file_count = single_id_count = 0
 
-    # মেসেজ ফরম্যাট (এখানেই শুধু পরিবর্তন করা হয়েছে যাতে 'Not Set' থাকলে 'সেট নেই' দেখায়)
+    # মেসেজ ফরম্যাট (আগের মতোই)
     status_msg = (
         f"👤 **আপনার প্রোফাইল স্ট্যাটাস**\n"
         f"━━━━━━━━━━━━━━━━━━\n"
@@ -1406,8 +1421,8 @@ async def show_user_status(message: types.Message):
     )
     
     await message.answer(status_msg, parse_mode="Markdown")
-                              
-    # এডমিন প্যানেল থেকে ইউজারের মেসেজ দেখার কমান্ড
+        
+# এডমিন প্যানেল থেকে ইউজারের মেসেজ দেখার কমান্ড
 @dp.message_handler(commands=['userlogs'], user_id=ADMIN_ID)
 async def get_user_history(message: types.Message):
     args = message.get_args().split()
