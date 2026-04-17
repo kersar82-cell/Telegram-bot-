@@ -786,8 +786,7 @@ async def ask_withdraw_amount(call: types.CallbackQuery, state: FSMContext):
     )
     await call.answer()
     
-
-    # --- ১. উইথড্র পরিমাণ গ্রহণ এবং অ্যাডমিনকে পাঠানো ---
+# --- ১. উইথড্র পরিমাণ গ্রহণ এবং অ্যাডমিনকে পাঠানো (Supabase ভার্সন) ---
 
 @dp.message_handler(state=BotState.waiting_for_withdraw_amount)
 async def process_withdraw_final(message: types.Message, state: FSMContext):
@@ -800,23 +799,34 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
 
     user_id = message.from_user.id
     
-    # ২. ডাটাবেস থেকে ইউজারের বর্তমান তথ্য আনা (withdraw_count এবং referred_by সহ)
-    cursor.execute("SELECT balance, bkash_num, nagad_num, rocket_num, binance_id, recharge_num, withdraw_count, referred_by FROM users WHERE user_id=?", (user_id,))
-    res = cursor.fetchone()
-    
-    if not res:
+    # ২. Supabase থেকে তথ্য আনা (Balances, Payment Methods এবং Users টেবিল থেকে)
+    bal_res = await asyncio.to_thread(supabase.table("balances").select("main_balance, withdraw_count").eq("user_id", user_id).execute)
+    pay_res = await asyncio.to_thread(supabase.table("payment_methods").select("*").eq("user_id", user_id).execute)
+    usr_res = await asyncio.to_thread(supabase.table("users").select("referred_by").eq("user_id", user_id).execute)
+
+    if not bal_res.data or not pay_res.data:
         await state.finish()
         return await message.answer("❌ ডাটাবেসে আপনার তথ্য পাওয়া যায়নি।")
 
-    # ডাটাগুলো আলাদা করা
-    balance, bkash, nagad, rocket, binance, recharge, wd_count, ref_by = res
+    # ডাটাগুলো আলাদা করা (আপনার ভেরিয়েবল নামগুলো ঠিক রাখা হয়েছে)
+    balance = bal_res.data[0].get('main_balance', 0)
+    wd_count = bal_res.data[0].get('withdraw_count', 0)
+    
+    p_data = pay_res.data[0]
+    bkash = p_data.get('bkash_num')
+    nagad = p_data.get('nagad_num')
+    rocket = p_data.get('rocket_num')
+    binance = p_data.get('binance_id')
+    recharge = p_data.get('recharge_num')
+    
+    ref_by = usr_res.data[0].get('referred_by', 0) if usr_res.data else 0
     
     # ৩. ব্যালেন্স চেক
     if amount > int(balance):
         return await message.answer(f"❌ আপনার ব্যালেন্স পর্যাপ্ত নয়! বর্তমান: {int(balance)} ৳")
     
     if amount <= 19:
-        return await message.answer("❌ সর্বনিম্ন ১ টাকা উইথড্র করা যাবে।")
+        return await message.answer("❌ সর্বনিম্ন ২০ টাকা উইথড্র করা যাবে।")
 
     # ৪. স্টেট থেকে উইথড্র টাইপ (Recharge নাকি Send Money) নেওয়া
     data = await state.get_data()
@@ -826,10 +836,9 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
     commission = int(amount * 0.05)
     next_wd_number = (wd_count or 0) + 1
 
-    # ৬. ইউজারের ব্যালেন্স এবং উইথড্র সংখ্যা আপডেট করা
+    # ৬. ইউজারের ব্যালেন্স এবং উইথড্র সংখ্যা আপডেট করা (balances টেবিলে)
     new_balance = int(balance - amount)
-    cursor.execute("UPDATE users SET balance = ?, withdraw_count = ? WHERE user_id = ?", (new_balance, next_wd_number, user_id))
-    db.commit()
+    await asyncio.to_thread(supabase.table("balances").update({"main_balance": new_balance, "withdraw_count": next_wd_number}).eq("user_id", user_id).execute)
 
     # ৭. মেথড অনুযায়ী পেমেন্ট ডিটেইলস সাজানো (HTML ব্যবহার করা হয়েছে)
     if w_type == "recharge":
@@ -875,8 +884,7 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
         await message.answer("✅ আপনার উইথড্র রিকোয়েস্ট সফলভাবে জমা হয়েছে!", reply_markup=main_menu())
     except Exception as e:
         # কোনো কারণে মেসেজ না গেলে ব্যালেন্স রিফান্ড করে দেওয়া
-        cursor.execute("UPDATE users SET balance = balance + ?, withdraw_count = withdraw_count - 1 WHERE user_id = ?", (amount, user_id))
-        db.commit()
+        await asyncio.to_thread(supabase.table("balances").update({"main_balance": balance, "withdraw_count": wd_count}).eq("user_id", user_id).execute)
         await message.answer("❌ সিস্টেম এরর! অ্যাডমিনকে রিকোয়েস্ট পাঠানো যায়নি। টাকা রিফান্ড করা হয়েছে।")
     
     # ১১. সিগনিফিক্যান্ট লাইন: স্টেট ফিনিশ করা (যাতে বারবার টাকা না চায়)
@@ -884,6 +892,7 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
     
     # ৪. এরপর অ্যাডমিনকে মেসেজ পাঠানো
 
+# ==========================================
 # ==========================================
 @dp.message_handler(commands=['check_user'], user_id=ADMIN_ID)
 async def admin_check_user_details(message: types.Message):
@@ -893,17 +902,21 @@ async def admin_check_user_details(message: types.Message):
     
     user_id = int(args)
     
-    # ডাটাবেস থেকে সব তথ্য আনা (পেন্ডিং ব্যালেন্স সহ)
-    cursor.execute("SELECT balance, refer_balance, pending_balance, referral_count, username FROM users WHERE user_id=?", (user_id,))
-    res = cursor.fetchone()
+    # ডাটাবেস থেকে সব তথ্য আনা (users এবং balances টেবিল থেকে)
+    usr_res = await asyncio.to_thread(supabase.table("users").select("username").eq("user_id", user_id).execute)
+    bal_res = await asyncio.to_thread(supabase.table("balances").select("main_balance, refer_balance, pending_balance, referral_count").eq("user_id", user_id).execute)
     
-    if res:
-        balance = res[0]
-        refer_bal = res[1]
-        pending_bal = res[2]
-        ref_count = res[3]
+    if usr_res.data and bal_res.data:
+        # ডাটাগুলো আলাদা করা
+        balance = bal_res.data[0].get("main_balance", 0)
+        refer_bal = bal_res.data[0].get("refer_balance", 0)
+        pending_bal = bal_res.data[0].get("pending_balance", 0)
+        ref_count = bal_res.data[0].get("referral_count", 0)
+        
         # ইউজারনেম না থাকলে বা None হলে বিকল্প টেক্সট
-        db_username = res[4] if res[4] else "ইউজারনেম নেই"
+        db_username = usr_res.data[0].get("username")
+        if not db_username:
+            db_username = "ইউজারনেম নেই"
         
         # HTML মোড ব্যবহার করা হয়েছে যাতে আন্ডারস্কোর (_) থাকলে মেসেজ ফেইল না হয়
         text = (
@@ -920,28 +933,34 @@ async def admin_check_user_details(message: types.Message):
         await message.answer(text, parse_mode="HTML")
     else:
         await message.answer("❌ এই আইডিটি ডাটাবেসে পাওয়া যায়নি।")
-        
 @dp.message_handler(commands=['edit'])
 async def admin_edit(message: types.Message):
     if message.from_user.id == ADMIN_ID:
         try:
             args = message.get_args().split()
-            cursor.execute("UPDATE users SET balance=? WHERE user_id=?", (args[1], args[0]))
-            db.commit()
+            # Supabase-এর balances টেবিলের main_balance আপডেট করা হচ্ছে
+            await asyncio.to_thread(supabase.table("balances").update({"main_balance": float(args[1])}).eq("user_id", int(args[0])).execute)
             await message.answer(f"✅ ইউজার {args[0]} এর ব্যালেন্স এডিট করা হয়েছে।")
-        except: await message.answer("ফরম্যাট: /edit আইডি টাকা")
+        except: 
+            await message.answer("ফরম্যাট: /edit আইডি টাকা")
 
 @dp.message_handler(commands=['broadcast'])
 async def admin_broadcast(message: types.Message):
     if message.from_user.id == ADMIN_ID:
         text = message.get_args()
-        cursor.execute("SELECT user_id FROM users")
-        all_users = cursor.fetchall()
-        for user in all_users:
-            try: await bot.send_message(user[0], text)
-            except: pass
+        
+        # Supabase-এর users টেবিল থেকে সব ইউজারের আইডি আনা হচ্ছে
+        res = await asyncio.to_thread(supabase.table("users").select("user_id").execute)
+        
+        if res.data:
+            for user in res.data:
+                try: 
+                    await bot.send_message(user['user_id'], text)
+                except: 
+                    pass
+                    
         await message.answer("✅ সবার কাছে মেসেজ পাঠানো হয়েছে।")
-
+        
 @dp.callback_query_handler(lambda c: c.data.startswith('adminadd_'))
 async def add_money_btn(call: types.CallbackQuery, state: FSMContext):
     target_id = call.data.split('_')[1]
@@ -955,14 +974,26 @@ async def final_add_money(message: types.Message, state: FSMContext):
         try:
             data = await state.get_data()
             amount = float(message.text)
-            uid = data['target_id']
-            cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, uid))
-            db.commit()
+            uid = int(data['target_id'])
+            
+            # Supabase থেকে বর্তমান ব্যালেন্স আনা
+            bal_res = await asyncio.to_thread(supabase.table("balances").select("main_balance").eq("user_id", uid).execute)
+            
+            if bal_res.data:
+                current_bal = bal_res.data[0].get('main_balance', 0)
+                new_bal = current_bal + amount
+                # নতুন ব্যালেন্স আপডেট করা
+                await asyncio.to_thread(supabase.table("balances").update({"main_balance": new_bal}).eq("user_id", uid).execute)
+            else:
+                # যদি ডাটা না থাকে, নতুন করে ইনসার্ট করা
+                await asyncio.to_thread(supabase.table("balances").insert({"user_id": uid, "main_balance": amount}).execute)
+                
             await bot.send_message(uid, f"✅আপনার একাউন্টে {amount} ৳ যোগ করেছে।")
             await message.answer(f"✅ {amount} ৳ সফলভাবে যোগ করা হয়েছে।")
-        except: await message.answer("❌ ভুল ইনপুট।")
+        except Exception as e: 
+            await message.answer("❌ ভুল ইনপুট।")
         await state.finish()
-  # ৫. রান করা
+
 # ==========================================
 # --- অ্যাডমিন প্যানেল: ইউজার সার্চ ও বিস্তারিত রিপোর্ট ---
 @dp.message_handler(commands=['search'], user_id=ADMIN_ID)
@@ -972,27 +1003,44 @@ async def admin_search(message: types.Message):
     
     try:
         target_id = int(args)
-        cursor.execute("SELECT balance, address FROM users WHERE user_id=?", (target_id,))
-        user = cursor.fetchone()
         
-        if user:
+        # ব্যালেন্স এবং পেমেন্ট মেথড আনা
+        bal_res = await asyncio.to_thread(supabase.table("balances").select("main_balance").eq("user_id", target_id).execute)
+        pay_res = await asyncio.to_thread(supabase.table("payment_methods").select("bkash_num, nagad_num, rocket_num, binance_id, recharge_num").eq("user_id", target_id).execute)
+        
+        if bal_res.data:
+            balance = bal_res.data[0].get('main_balance', 0)
+            
+            # পেমেন্ট মেথড চেক করা (যেকোনো একটি সেভ করা নম্বর দেখানোর জন্য)
+            address = "নেই"
+            if pay_res.data:
+                p = pay_res.data[0]
+                address = p.get('bkash_num') or p.get('nagad_num') or p.get('rocket_num') or p.get('binance_id') or p.get('recharge_num') or "নেই"
+            
             import datetime
             today = datetime.date.today().strftime("%Y-%m-%d")
-            # আজকের কাজের হিসাব
-            cursor.execute("SELECT file_count, single_id_count FROM stats WHERE user_id=? AND date=?", (target_id, today))
-            s = cursor.fetchone() or (0, 0)
+            
+            # আজকের কাজের হিসাব (daily_stats টেবিল থেকে)
+            stats_res = await asyncio.to_thread(supabase.table("daily_stats").select("file_count, single_id_count").eq("user_id", target_id).eq("date", today).execute)
+            
+            if stats_res.data:
+                s_file = stats_res.data[0].get('file_count', 0)
+                s_single = stats_res.data[0].get('single_id_count', 0)
+            else:
+                s_file, s_single = 0, 0
             
             text = (f"👤 **ইউজার রিপোর্ট (ID: `{target_id}`)**\n\n"
-                    f"💵 ব্যালেন্স: {user[0]} টাকা\n"
-                    f"💳 পেমেন্ট মেথড: `{user[1] or 'নেই'}`\n"
+                    f"💵 ব্যালেন্স: {balance} টাকা\n"
+                    f"💳 পেমেন্ট মেথড: `{address}`\n"
                     f"📊 আজ জমা দিয়েছে:\n"
-                    f"📁 ফাইল: {s[0]} টি\n"
-                    f"👤 সিঙ্গেল আইডি: {s[1]} টি")
+                    f"📁 ফাইল: {s_file} টি\n"
+                    f"👤 সিঙ্গেল আইডি: {s_single} টি")
             await message.answer(text, parse_mode="Markdown")
         else:
             await message.answer("❌ ডাটাবেসে এই ইউজার পাওয়া যায়নি।")
     except ValueError:
         await message.answer("❌ আইডি শুধুমাত্র সংখ্যা হতে হবে।")
+                       
         # ১. কমান্ড দিয়ে ব্লক করা: /block 12345678
 @dp.message_handler(commands=['block'], user_id=ADMIN_ID)
 async def admin_block(message: types.Message, state: FSMContext):
