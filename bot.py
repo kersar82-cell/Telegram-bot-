@@ -1415,61 +1415,67 @@ async def show_only_rules(message: types.Message):
 async def show_user_status(message: types.Message):
     user_id = message.from_user.id
     
-    # ১. ব্যালেন্স ইনফো আনা (balances টেবিল থেকে)
-    balance_res = await asyncio.to_thread(supabase.table("balances").select("main_balance, pending_balance").eq("user_id", user_id).execute)
-    
-    if balance_res.data:
-        balance = balance_res.data[0].get('main_balance', 0)
-        pending_balance = balance_res.data[0].get('pending_balance', 0)
-    else:
-        balance = pending_balance = 0
+    try:
+        # ১. ব্যালেন্স ইনফো আনা (balances টেবিল থেকে)
+        balance_res = await asyncio.to_thread(supabase.table("balances").select("main_balance, pending_balance").eq("user_id", user_id).execute)
+        
+        if balance_res.data:
+            balance = balance_res.data[0].get('main_balance', 0)
+            pending_balance = balance_res.data[0].get('pending_balance', 0)
+        else:
+            balance = pending_balance = 0
 
-    # ২. পেমেন্ট মেথড ইনফো আনা (payment_methods টেবিল থেকে)
-    payment_res = await asyncio.to_thread(supabase.table("payment_methods").select("bkash_num, nagad_num, rocket_num, binance_id, recharge_num").eq("user_id", user_id).execute)
-    
-    if payment_res.data:
-        p_data = payment_res.data[0]
-        bkash = p_data.get('bkash_num')
-        nagad = p_data.get('nagad_num')
-        rocket = p_data.get('rocket_num')
-        binance = p_data.get('binance_id')
-        recharge = p_data.get('recharge_num')
-    else:
-        bkash = nagad = rocket = binance = recharge = None
+        # ২. পেমেন্ট মেথড ইনফো আনা (payment_methods টেবিল থেকে)
+        payment_res = await asyncio.to_thread(supabase.table("payment_methods").select("bkash_num, nagad_num, rocket_num, binance_id, recharge_num").eq("user_id", user_id).execute)
+        
+        if payment_res.data:
+            p_data = payment_res.data[0]
+            bkash = p_data.get('bkash_num')
+            nagad = p_data.get('nagad_num')
+            rocket = p_data.get('rocket_num')
+            binance = p_data.get('binance_id')
+            recharge = p_data.get('recharge_num')
+        else:
+            bkash = nagad = rocket = binance = recharge = None
 
-    # ৩. কাজের স্ট্যাটাস আনা (daily_stats টেবিল থেকে ইউজারের সব দিনের কাজের যোগফল)
-    stats_res = await asyncio.to_thread(supabase.table("daily_stats").select("file_count, single_id_count").eq("user_id", user_id).execute)
-    
-    if stats_res.data:
-        # যতদিনের কাজ আছে সবগুলোর count যোগ করা হচ্ছে
-        file_count = sum(item.get('file_count', 0) for item in stats_res.data)
-        single_id_count = sum(item.get('single_id_count', 0) for item in stats_res.data)
-    else:
-        file_count = single_id_count = 0
+        # ৩. কাজের স্ট্যাটাস আনা (daily_stats টেবিল থেকে ইউজারের সব দিনের কাজের যোগফল)
+        stats_res = await asyncio.to_thread(supabase.table("daily_stats").select("file_count, single_id_count").eq("user_id", user_id).execute)
+        
+        if stats_res.data:
+            # যতদিনের কাজ আছে সবগুলোর count যোগ করা হচ্ছে
+            file_count = sum(item.get('file_count', 0) for item in stats_res.data)
+            single_id_count = sum(item.get('single_id_count', 0) for item in stats_res.data)
+        else:
+            file_count = single_id_count = 0
 
-    # মেসেজ ফরম্যাট (আগের মতোই)
+    except Exception as e:
+        # যদি ডাটাবেসে কানেক্ট হতে কোনো সমস্যা হয়
+        print(f"Status check error: {e}")
+        return await message.answer("❌ দুঃখিত, ডাটাবেস থেকে আপনার তথ্য আনতে সমস্যা হচ্ছে। একটু পর আবার চেষ্টা করুন।")
+
+    # মেসেজ ফরম্যাট (HTML এ কনভার্ট করা হয়েছে)
     status_msg = (
-        f"👤 **আপনার প্রোফাইল স্ট্যাটাস**\n"
+        f"👤 <b>আপনার প্রোফাইল স্ট্যাটাস</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"🆔 **ইউজার আইডি:** `{user_id}`\n"
-        f"💰 **মেইন ব্যালেন্স:** {balance} BDT\n"
-        f"⏳ **পেন্ডিং ব্যালেন্স:** {pending_balance} BDT\n"
+        f"🆔 <b>ইউজার আইডি:</b> <code>{user_id}</code>\n"
+        f"💰 <b>মেইন ব্যালেন্স:</b> {balance} BDT\n"
+        f"⏳ <b>পেন্ডিং ব্যালেন্স:</b> {pending_balance} BDT\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"📁 **মোট ফাইল:** {file_count} টি\n"
-        f"🆔 **সিঙ্গেল আইডি:** {single_id_count} টি\n"
+        f"📁 <b>মোট ফাইল:</b> {file_count} টি\n"
+        f"🆔 <b>সিঙ্গেল আইডি:</b> {single_id_count} টি\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"💳 **সেভ করা পেমেন্ট মেথড:**\n"
-        f"📱 রিচার্জ: `{recharge if (recharge and recharge != 'Not Set') else 'সেট নেই'}`\n"
-        f"🟢 বিকাশ: `{bkash if (bkash and bkash != 'Not Set') else 'সেট নেই'}`\n"
-        f"🟠 নগদ: `{nagad if (nagad and nagad != 'Not Set') else 'সেট নেই'}`\n"
-        f"💜 রকেট: `{rocket if (rocket and rocket != 'Not Set') else 'সেট নেই'}`\n"
-        f"🟡 বিন্যান্স: `{binance if (binance and binance != 'Not Set') else 'সেট নেই'}`\n"
+        f"💳 <b>সেভ করা পেমেন্ট মেথড:</b>\n"
+        f"📱 রিচার্জ: <code>{recharge if (recharge and recharge != 'Not Set') else 'সেট নেই'}</code>\n"
+        f"🟢 বিকাশ: <code>{bkash if (bkash and bkash != 'Not Set') else 'সেট নেই'}</code>\n"
+        f"🟠 নগদ: <code>{nagad if (nagad and nagad != 'Not Set') else 'সেট নেই'}</code>\n"
+        f"💜 রকেট: <code>{rocket if (rocket and rocket != 'Not Set') else 'সেট নেই'}</code>\n"
+        f"🟡 বিন্যান্স: <code>{binance if (binance and binance != 'Not Set') else 'সেট নেই'}</code>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"পেন্ডিং ব্যালেন্স এডমিন চেক করে মেইন ব্যালেন্সে দিয়ে দিবে। 🔥"
     )
     
-    await message.answer(status_msg, parse_mode="Markdown")
-        
+    await message.answer(status_msg, parse_mode="HTML")
+
 # এডমিন প্যানেল থেকে ইউজারের মেসেজ দেখার কমান্ড
 @dp.message_handler(commands=['userlogs'], user_id=ADMIN_ID)
 async def get_user_history(message: types.Message):
@@ -1497,87 +1503,105 @@ async def get_user_history(message: types.Message):
 # অ্যাডমিন এই কমান্ড দিলে সব ইউজারের ইউজারনেম ও আইডি দেখতে পাবেন
 @dp.message_handler(commands=['allusers'], user_id=ADMIN_ID)
 async def get_all_users(message: types.Message):
-    cursor.execute("SELECT user_id, username FROM users")
-    users = cursor.fetchall()
-    
-    if not users:
-        return await message.answer("❌ ডাটাবেসে কোনো ইউজার পাওয়া যায়নি।")
-    
-    # ইনচার্জ বা অ্যাডমিনের জন্য মেসেজ হেডার
-    response_text = "👥 **বটের সকল ইউজার লিস্ট:**\n━━━━━━━━━━━━━━━\n"
-    
-    count = 0
-    for index, user in enumerate(users, 1):
-        uid, uname = user[0], user[1]
-        # ইউজারনেম না থাকলে 'No Username' দেখাবে
-        display_name = uname if uname else "No Username"
-        response_text += f"{index}. 🆔 `{uid}` | 👤 {display_name}\n"
-        count += 1
+    try:
+        # Supabase থেকে সব ইউজারের ডাটা আনা
+        res = await asyncio.to_thread(supabase.table("users").select("user_id, username").execute)
+        users = res.data
         
-        # টেলিগ্রাম মেসেজের লিমিট এড়াতে প্রতি ৫০ জন পর পর নতুন মেসেজ পাঠানো
-        if index % 50 == 0:
+        if not users:
+            return await message.answer("❌ ডাটাবেসে কোনো ইউজার পাওয়া যায়নি।")
+        
+        # ইনচার্জ বা অ্যাডমিনের জন্য মেসেজ হেডার
+        response_text = "👥 **বটের সকল ইউজার লিস্ট:**\n━━━━━━━━━━━━━━━\n"
+        
+        count = 0
+        for index, user in enumerate(users, 1):
+            uid = user.get('user_id')
+            uname = user.get('username')
+            # ইউজারনেম না থাকলে 'No Username' দেখাবে
+            display_name = uname if uname else "No Username"
+            response_text += f"{index}. 🆔 `{uid}` | 👤 {display_name}\n"
+            count += 1
+            
+            # টেলিগ্রাম মেসেজের লিমিট এড়াতে প্রতি ৫০ জন পর পর নতুন মেসেজ পাঠানো
+            if index % 50 == 0:
+                await message.answer(response_text, parse_mode="Markdown")
+                response_text = ""
+
+        if response_text:
+            response_text += f"━━━━━━━━━━━━━━━\n✅ মোট ইউজার: {count} জন"
             await message.answer(response_text, parse_mode="Markdown")
-            response_text = ""
-
-    if response_text:
-        response_text += f"━━━━━━━━━━━━━━━\n✅ মোট ইউজার: {count} জন"
-        await message.answer(response_text, parse_mode="Markdown")
-
+            
+    except Exception as e:
+        print(f"All users fetch error: {e}")
+        await message.answer("❌ ডাটাবেস থেকে ইউজার লিস্ট আনতে সমস্যা হয়েছে।")
+        
 import datetime
-
 @dp.message_handler(commands=['todaystats'], user_id=ADMIN_ID)
 async def get_today_stats(message: types.Message):
+    import datetime
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     
-    # ১. ডাটাবেস থেকে সব ইউজার এবং তাদের আজকের কাজের তথ্য আনা
-    cursor.execute("""
-        SELECT users.user_id, users.username, stats.file_count, stats.single_id_count 
-        FROM users 
-        LEFT JOIN stats ON users.user_id = stats.user_id AND stats.date = ?
-    """, (today,))
-    
-    all_users = cursor.fetchall()
+    try:
+        # ১. Supabase থেকে সব ইউজার এবং তাদের আজকের কাজের তথ্য আনা
+        users_res = await asyncio.to_thread(supabase.table("users").select("user_id, username").execute)
+        stats_res = await asyncio.to_thread(supabase.table("daily_stats").select("user_id, file_count, single_id_count").eq("date", today).execute)
+        
+        if not users_res.data:
+            return await message.answer("❌ ডাটাবেসে কোনো ইউজার পাওয়া যায়নি।")
 
-    if not all_users:
-        return await message.answer("❌ ডাটাবেসে কোনো ইউজার পাওয়া যায়নি।")
+        # আজকের কাজের ডাটাগুলো সহজে মেলানোর জন্য একটি ডিকশনারি (Dictionary) তৈরি করা
+        today_stats = {}
+        if stats_res.data:
+            for stat in stats_res.data:
+                today_stats[stat['user_id']] = stat
 
-    worked_list = []      # যারা কাজ করেছে
-    not_worked_list = []  # যারা কাজ করেনি
+        worked_list = []      # যারা কাজ করেছে
+        not_worked_list = []  # যারা কাজ করেনি
 
-    for user in all_users:
-        uid, uname, f_count, s_count = user
-        f_count = f_count if f_count else 0
-        s_count = s_count if s_count else 0
-        username = uname if uname else "No Username"
+        # ২. ইউজারদের ডাটা চেক করে লিস্টে যোগ করা
+        for user in users_res.data:
+            uid = user.get('user_id')
+            uname = user.get('username')
+            username = uname if uname else "No Username"
 
-        if f_count > 0 or s_count > 0:
-            worked_list.append(f"✅ 🆔 `{uid}` | {username}\n   └📁 ফাইল: {f_count} | 🆔 সিঙ্গেল: {s_count}")
+            # ইউজারের আজকের কাজ আছে কি না চেক করা
+            user_stat = today_stats.get(uid, {})
+            f_count = user_stat.get('file_count', 0)
+            s_count = user_stat.get('single_id_count', 0)
+
+            if f_count > 0 or s_count > 0:
+                worked_list.append(f"✅ 🆔 `{uid}` | {username}\n   └📁 ফাইল: {f_count} | 🆔 সিঙ্গেল: {s_count}")
+            else:
+                not_worked_list.append(f"❌ 🆔 `{uid}` | {username}")
+
+        # ৩. মেসেজ সাজানো
+        response_text = f"📊 **আজকের রিপোর্ট ({today})**\n\n"
+        
+        response_text += "🔥 **যারা কাজ জমা দিয়েছে:**\n━━━━━━━━━━━━━━━\n"
+        if worked_list:
+            response_text += "\n\n".join(worked_list)
         else:
-            not_worked_list.append(f"❌ 🆔 `{uid}` | {username}")
+            response_text += "আজ এখন পর্যন্ত কেউ কাজ করেনি।"
 
-    # ২. মেসেজ সাজানো
-    response_text = f"📊 **আজকের রিপোর্ট ({today})**\n\n"
-    
-    response_text += "🔥 **যারা কাজ জমা দিয়েছে:**\n━━━━━━━━━━━━━━━\n"
-    if worked_list:
-        response_text += "\n\n".join(worked_list)
-    else:
-        response_text += "আজ এখন পর্যন্ত কেউ কাজ করেনি।"
+        response_text += "\n\n😴 **যারা এখনো কাজ দেয়নি:**\n━━━━━━━━━━━━━━━\n"
+        if not_worked_list:
+            response_text += "\n".join(not_worked_list)
+        else:
+            response_text += "সবাই আজকে কাজ করেছে!"
 
-    response_text += "\n\n😴 **যারা এখনো কাজ দেয়নি:**\n━━━━━━━━━━━━━━━\n"
-    if not_worked_list:
-        response_text += "\n".join(not_worked_list)
-    else:
-        response_text += "সবাই আজকে কাজ করেছে!"
-
-    # ৩. মেসেজ পাঠানো (অনেক বড় হলে ভাগ করে পাঠানো)
-    if len(response_text) > 3500:
-        # মেসেজ খুব বড় হলে পার্ট পার্ট করে পাঠানো
-        for i in range(0, len(response_text), 4000):
-            await message.answer(response_text[i:i+4000], parse_mode="Markdown")
-    else:
-        await message.answer(response_text, parse_mode="Markdown")
-#==============
+        # ৪. মেসেজ পাঠানো (অনেক বড় হলে ভাগ করে পাঠানো)
+        if len(response_text) > 3500:
+            # মেসেজ খুব বড় হলে পার্ট পার্ট করে পাঠানো
+            for i in range(0, len(response_text), 4000):
+                await message.answer(response_text[i:i+4000], parse_mode="Markdown")
+        else:
+            await message.answer(response_text, parse_mode="Markdown")
+            
+    except Exception as e:
+        print(f"Today stats error: {e}")
+        await message.answer("❌ ডাটাবেস থেকে রিপোর্ট আনতে সমস্যা হয়েছে।")
+                                     
 # --- উইথড্র অ্যাপ্রুভ এবং রিজেক্ট হ্যান্ডলার ---
 
 @dp.callback_query_handler(lambda c: c.data.startswith('admin_payment_'), state="*")
@@ -1593,18 +1617,25 @@ async def process_admin_withdrawal(call: types.CallbackQuery):
     if action == "approve":
         commission = float(data[5])
         
-        # ১. রেফারার থাকলে তাকে কমিশন দেওয়া
-        cursor.execute("SELECT referred_by FROM users WHERE user_id=?", (user_id,))
-        ref_res = cursor.fetchone()
-        if ref_res and ref_res[0] != 0:
-            referrer_id = ref_res[0]
-            cursor.execute("UPDATE users SET refer_balance = refer_balance + ? WHERE user_id = ?", (commission, referrer_id))
-            try:
-                await bot.send_message(referrer_id, f"🎁 আপনি রেফার কমিশন পেয়েছেন: {commission} ৳")
-            except:
-                pass
+        # ১. রেফারার থাকলে তাকে কমিশন দেওয়া (users এবং balances টেবিল ব্যবহার করে)
+        usr_res = await asyncio.to_thread(supabase.table("users").select("referred_by").eq("user_id", user_id).execute)
         
-        db.commit()
+        if usr_res.data and usr_res.data[0].get('referred_by') != 0:
+            referrer_id = usr_res.data[0].get('referred_by')
+            
+            # রেফারারের বর্তমান রেফার ব্যালেন্স আনা
+            ref_bal_res = await asyncio.to_thread(supabase.table("balances").select("refer_balance").eq("user_id", referrer_id).execute)
+            
+            if ref_bal_res.data:
+                current_ref_bal = ref_bal_res.data[0].get('refer_balance', 0)
+                # রেফার ব্যালেন্স আপডেট করা
+                await asyncio.to_thread(supabase.table("balances").update({"refer_balance": current_ref_bal + commission}).eq("user_id", referrer_id).execute)
+                
+                try:
+                    await bot.send_message(referrer_id, f"🎁 আপনি রেফার কমিশন পেয়েছেন: {commission} ৳")
+                except:
+                    pass
+        
         await call.message.edit_text(f"✅ ইউজার {user_id} এর {amount} ৳ উইথড্র সফলভাবে অ্যাপ্রুভ করা হয়েছে।")
         try:
             await bot.send_message(user_id, f"✅ আপনার {amount} ৳ উইথড্র রিকোয়েস্টটি অ্যাপ্রুভ করা হয়েছে।")
@@ -1612,9 +1643,19 @@ async def process_admin_withdrawal(call: types.CallbackQuery):
             pass
 
     elif action == "reject":
-        # রিজেক্ট করলে ইউজারের ব্যালেন্স ফেরত দেওয়া
-        cursor.execute("UPDATE users SET balance = balance + ?, withdraw_count = withdraw_count - 1 WHERE user_id = ?", (amount, user_id))
-        db.commit()
+        # ২. রিজেক্ট করলে ইউজারের ব্যালেন্স ফেরত দেওয়া (balances টেবিল থেকে)
+        bal_res = await asyncio.to_thread(supabase.table("balances").select("main_balance, withdraw_count").eq("user_id", user_id).execute)
+        
+        if bal_res.data:
+            current_bal = bal_res.data[0].get('main_balance', 0)
+            current_wd = bal_res.data[0].get('withdraw_count', 0)
+            
+            # ব্যালেন্স ফেরত এবং উইথড্র কাউন্ট কমানো
+            await asyncio.to_thread(supabase.table("balances").update({
+                "main_balance": current_bal + amount, 
+                "withdraw_count": current_wd - 1
+            }).eq("user_id", user_id).execute)
+            
         await call.message.edit_text(f"❌ ইউজার {user_id} এর উইথড্র রিকোয়েস্ট রিজেক্ট করা হয়েছে এবং টাকা ফেরত দেওয়া হয়েছে।")
         try:
             await bot.send_message(user_id, f"❌ আপনার {amount} ৳ উইথড্র রিকোয়েস্টটি রিজেক্ট করা হয়েছে। টাকা আপনার ব্যালেন্সে ফেরত দেওয়া হয়েছে।")
@@ -1622,15 +1663,16 @@ async def process_admin_withdrawal(call: types.CallbackQuery):
             pass
 
     await call.answer()
-
+    
 import random
+
 
 # ১. ফেক মেম্বার অ্যাড করার কমান্ড (অ্যাডমিনের জন্য)
 @dp.message_handler(commands=['add_fake'], user_id=ADMIN_ID)
 async def add_fake_leaderboard(message: types.Message):
     args = message.get_args().split()
     if len(args) < 2:
-        return await message.answer("⚠️ নিয়ম: `/add_fake NAME BALANCE` \nউদাহরণ: `/add_fake Worker1 5000`")
+        return await message.answer("⚠️ নিয়ম: <code>/add_fake NAME BALANCE</code> \nউদাহরণ: <code>/add_fake Worker1 5000</code>", parse_mode="HTML")
 
     fake_name = args[0].replace("_", " ")
     try:
@@ -1638,52 +1680,70 @@ async def add_fake_leaderboard(message: types.Message):
     except:
         return await message.answer("❌ ব্যালেন্স অবশ্যই নম্বর হতে হবে।")
 
-    # ফেক ইউআইডি জেনারেট (৬ ডিজিট)
+    # ফেক ইউআইডি জেনারেট
     fake_uid = random.randint(1000000000, 9999999999) 
 
-    # ডাটাবেসে সেভ (username কলামে নাম থাকলেও আমরা লিডারবোর্ডে UID দেখাবো)
-    cursor.execute("INSERT INTO users (user_id, username, balance) VALUES (?, ?, ?)", (fake_uid, fake_name, balance))
-    db.commit()
+    try:
+        # Supabase-এ সেভ (users এবং balances দুটি টেবিলে আলাদা করে)
+        await asyncio.to_thread(supabase.table("users").insert({"user_id": fake_uid, "username": fake_name}).execute)
+        await asyncio.to_thread(supabase.table("balances").insert({"user_id": fake_uid, "main_balance": balance}).execute)
 
-    await message.answer(f"✅ ফেক ইউজার যুক্ত হয়েছে!\n🆔 UID: `{fake_uid}`\n💰 ব্যালেন্স: {balance} ৳")
+        await message.answer(f"✅ ফেক ইউজার যুক্ত হয়েছে!\n🆔 UID: <code>{fake_uid}</code>\n💰 ব্যালেন্স: {balance} ৳", parse_mode="HTML")
+    except Exception as e:
+        await message.answer("❌ ডাটাবেসে সেভ করতে এরর হয়েছে।")
 
+# ২. লিডারবোর্ড দেখানো
 @dp.message_handler(lambda message: message.text == "🏆LEADERBOARD")
 async def show_leaderboard(message: types.Message):
     user_id = message.from_user.id
-    # ১০৩ লাইনের নিচে এটি বসান
+    
+    # আপনার চেক ব্লক ফাংশনটি
     if await is_blocked(user_id):
         return await message.answer("❌ দুঃখিত, আপনাকে ব্লক করা হয়েছে। \n\n✅আপনি 24 hrs পরে বটটি ব্যবহার করতে পারবেন না।")
         
-    # এটি ডাটাবেসের সবার মধ্যে তুলনা করে টপ ৫ জনের UID এবং Balance আনবে
-    # এখানে রিয়েল এবং ফেক সবাই একসাথে প্রতিযোগিতা করবে
-    cursor.execute("SELECT user_id, balance FROM users ORDER BY balance DESC LIMIT 5")
-    top_rows = cursor.fetchall()
+    try:
+        # এটি balances টেবিলের সবার মধ্যে তুলনা করে টপ ৫ জনের UID এবং Balance আনবে
+        top_res = await asyncio.to_thread(supabase.table("balances").select("user_id, main_balance").order("main_balance", desc=True).limit(5).execute)
+        top_rows = top_res.data
 
-    if not top_rows:
-        return await message.answer("🏆 লিডারবোর্ড এখনো খালি!")
+        if not top_rows:
+            return await message.answer("🏆 লিডারবোর্ড এখনো খালি!")
 
-    # ইউজারের নিজের পজিশন কত নম্বরে সেটা বের করা
-    cursor.execute("""
-        SELECT COUNT(*) + 1 FROM users 
-        WHERE balance > (SELECT balance FROM users WHERE user_id = ?)
-    """, (user_id,))
-    user_rank = cursor.fetchone()[0]
+        # ইউজারের নিজের পজিশন কত নম্বরে সেটা বের করা
+        # প্রথমে নিজের ব্যালেন্স চেক
+        my_bal_res = await asyncio.to_thread(supabase.table("balances").select("main_balance").eq("user_id", user_id).execute)
+        my_balance = my_bal_res.data[0].get('main_balance', 0) if my_bal_res.data else 0
+        
+        # এরপর নিজের থেকে বেশি ব্যালেন্স কতজনের আছে তা বের করে র‍্যাংক হিসাব করা
+        rank_res = await asyncio.to_thread(supabase.table("balances").select("user_id").gt("main_balance", my_balance).execute)
+        user_rank = len(rank_res.data) + 1 if rank_res.data else 1
 
-    # মেসেজ তৈরি
-    text = "🏆 **সর্বোচ্চ ব্যালেন্সধারী ৫ জন কর্মী** 🏆\n"
-    text += "━━━━━━━━━━━━━━━━━━━\n\n"
-    
-    emojis = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
-    
-    for i, row in enumerate(top_rows):
-        uid, balance = row
-        # এখানে আসল বা ফেক যার ব্যালেন্স বেশি হবে, তার UID-ই উপরে দেখাবে
-        text += f"{emojis[i]} **UID:** `{uid}`\n└─ 💰 ব্যালেন্স: {balance} ৳\n\n"
+        # মেসেজ তৈরি (সম্পূর্ণ HTML ফরম্যাটে)
+        text = "🏆 <b>সর্বোচ্চ ব্যালেন্সধারী ৫ জন কর্মী</b> 🏆\n"
+        text += "━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        emojis = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+        
+        for i, row in enumerate(top_rows):
+            uid = row.get('user_id')
+            balance = row.get('main_balance')
+            
+            emoji = emojis[i] if i < len(emojis) else f"{i+1}️⃣"
+            
+            # এখানে আসল বা ফেক যার ব্যালেন্স বেশি হবে, তার UID-ই উপরে দেখাবে
+            text += f"{emoji} <b>UID:</b> <code>{uid}</code>\n└─ 💰 ব্যালেন্স: {balance} ৳\n\n"
 
-    text += "━━━━━━━━━━━━━━━━━━━\n🔥 বেশি কাজ করে লিডারবোর্ডের শীর্ষে আসুন!"
-    
-    await message.answer(text, parse_mode="Markdown")
-    # ৩. ফেক বা রিয়েল ইউজারের ব্যালেন্স এডিট করার কমান্ড (অ্যাডমিনের জন্য)
+        text += "━━━━━━━━━━━━━━━━━━━\n"
+        text += f"🎯 <b>আপনার বর্তমান পজিশন:</b> {user_rank} নম্বর!\n"
+        text += "🔥 বেশি কাজ করে লিডারবোর্ডের শীর্ষে আসুন!"
+        
+        await message.answer(text, parse_mode="HTML")
+        
+    except Exception as e:
+        print(f"Leaderboard error: {e}")
+        await message.answer("❌ লিডারবোর্ড লোড করতে সমস্যা হচ্ছে।")
+        
+ # ৩. ফেক বা রিয়েল ইউজারের ব্যালেন্স এডিট করার কমান্ড (অ্যাডমিনের জন্য)
 @dp.message_handler(commands=['edit_fake'], user_id=ADMIN_ID)
 async def edit_fake_balance(message: types.Message):
     args = message.get_args().split()
