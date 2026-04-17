@@ -578,7 +578,7 @@ async def handle_file(message: types.Message, state: FSMContext):
 # --- ধাপ ২ এর উইথড্র মেইন মেনু ---
 @dp.message_handler(lambda message: message.text == "💳WITHDRAW")
 async def withdraw_main_menu(message: types.Message):
-        # শুধু এই অংশটুকু যোগ করবেন
+    # শুধু এই অংশটুকু যোগ করবেন
     if not WITHDRAW_ENABLED:
         return await message.answer("⚠️ বর্তমানে পেমেন্ট সার্ভার রক্ষণাবেক্ষণের জন্য উইথড্র সাময়িকভাবে বন্ধ আছে।\n🔋আজকের রিপোর্ট আসলে তখন আমাদের গ্রুপে জানিয়ে দেওয়া হবে।\nতখন আপনারা উইথড্র করতে পারবেন।\n 💳 Withdraw Option খোলার সময়~~~~~~~\n⌛⏰6.pm-12pm")
     user_id = message.from_user.id
@@ -597,7 +597,8 @@ async def withdraw_main_menu(message: types.Message):
         "নিচের বাটনগুলো ব্যবহার করে আপনার পেমেন্ট নম্বর সেভ করুন অথবা টাকা উত্তোলনের আবেদন করুন। ✨"
     )
     await message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
-       # --- ১. পেমেন্ট মেথড টাইপ সিলেকশন (Recharge vs Send Money) ---
+
+# --- ১. পেমেন্ট মেথড টাইপ সিলেকশন (Recharge vs Send Money) ---
 @dp.callback_query_handler(text="add_method")
 async def select_method_type(call: types.CallbackQuery):
     kb = types.InlineKeyboardMarkup(row_width=2)
@@ -606,8 +607,7 @@ async def select_method_type(call: types.CallbackQuery):
         types.InlineKeyboardButton("💸 Send Money", callback_data="set_sendmoney")
     )
     await call.message.edit_text("আপনি কোন মাধ্যমে নম্বর সেভ করতে চান? 👇", reply_markup=kb)
-
-# --- ১. মোবাইল রিচার্জ নম্বর সেভ করা (সংশোধিত) ---
+    # --- ১. মোবাইল রিচার্জ নম্বর সেভ করা (সংশোধিত) ---
 @dp.message_handler(state=BotState.waiting_for_recharge_num)
 async def save_recharge_db(message: types.Message, state: FSMContext):
     num = message.text
@@ -640,8 +640,6 @@ async def save_recharge_db(message: types.Message, state: FSMContext):
     )
     
     await state.finish()
-
-
 # --- ২. সেন্ড মানি (বিকাশ/নগদ/রকেট/বাইনান্স) নম্বর সেভ করা (সংশোধিত) ---
 @dp.message_handler(state=BotState.waiting_for_method_num)
 async def save_sendmoney_db(message: types.Message, state: FSMContext):
@@ -719,17 +717,20 @@ async def process_withdraw_method(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
 
 # --- সেন্ড মানি ক্লিক করলে ৫০ টাকার নিচের চেক ---
+# --- সেন্ড মানি ক্লিক করলে ৫০ টাকার নিচের চেক ---
 @dp.callback_query_handler(text="wd_sendmoney")
 async def check_sendmoney_limit(call: types.CallbackQuery, state: FSMContext):
     user_id = call.from_user.id
-    cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    balance = cursor.fetchone()[0]
+    
+    # Supabase-এর balances টেবিল থেকে ব্যালেন্স আনা
+    bal_res = await asyncio.to_thread(supabase.table("balances").select("main_balance").eq("user_id", user_id).execute)
+    balance = int(bal_res.data[0].get('main_balance', 0)) if bal_res.data else 0
 
     # যদি ৫০ টাকার কম হয়
     if balance < 50:
         return await call.answer("⚠️ সেন্ড মানি করতে কমপক্ষে ৫০ টাকা লাগবে। আপনার ব্যালেন্স কম!", show_alert=True)
     
-    # ৫০ বা তার বেশি হলে টাকার পরিমাণ চাইবে (আগের ধাপ ৫ এর মতো)
+    # ৫০ বা তার বেশি হলে টাকার পরিমাণ চাইবে
     await state.update_data(withdraw_type="sendmoney")
     await BotState.waiting_for_withdraw_amount.set()
     await call.message.answer("💵 কত টাকা উইথড্র (Send Money) করতে চান? পরিমাণ লিখুন:")
@@ -739,8 +740,10 @@ async def check_sendmoney_limit(call: types.CallbackQuery, state: FSMContext):
 @dp.callback_query_handler(text="wd_recharge")
 async def check_recharge_limit(call: types.CallbackQuery, state: FSMContext):
     user_id = call.from_user.id
-    cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    balance = cursor.fetchone()[0]
+    
+    # Supabase-এর balances টেবিল থেকে ব্যালেন্স আনা
+    bal_res = await asyncio.to_thread(supabase.table("balances").select("main_balance").eq("user_id", user_id).execute)
+    balance = int(bal_res.data[0].get('main_balance', 0)) if bal_res.data else 0
 
     if balance < 20:
         return await call.answer("⚠️ রিচার্জ নিতে কমপক্ষে ২০ টাকা লাগবে।", show_alert=True)
@@ -749,19 +752,29 @@ async def check_recharge_limit(call: types.CallbackQuery, state: FSMContext):
     await BotState.waiting_for_withdraw_amount.set()
     await call.message.answer("📱 কত টাকা রিচার্জ নিতে চান? পরিমাণ লিখুন:")
     await call.answer()
-    
 # --- ২. উইথড্র মেথড সিলেক্ট করার পর টাকার পরিমাণ চাওয়া ---
 @dp.callback_query_handler(lambda c: c.data.startswith('wd_'))
 async def ask_withdraw_amount(call: types.CallbackQuery, state: FSMContext):
     w_type = call.data.split('_')[1] # recharge / sendmoney
     user_id = call.from_user.id
     
-    # ডাটাবেস থেকে তথ্য পুনরায় চেক করা
-    cursor.execute(f"SELECT {w_type}_num FROM users WHERE user_id=?" if w_type == 'recharge' else "SELECT bkash_num, nagad_num, rocket_num, binance_id FROM users WHERE user_id=?", (user_id,))
-    saved_data = cursor.fetchone()
+    # Supabase-এর payment_methods টেবিল থেকে তথ্য পুনরায় চেক করা
+    pay_res = await asyncio.to_thread(supabase.table("payment_methods").select("*").eq("user_id", user_id).execute)
+    
+    if not pay_res.data:
+        return await call.message.answer("⚠️ আপনার কোনো পেমেন্ট নম্বর সেভ করা নেই! \nআগে 'Add Payment Method' বাটন থেকে নম্বর সেভ করুন।")
 
-    # নম্বর সেভ করা না থাকলে উইথড্র করতে দিবে না
-    if not any(saved_data) if isinstance(saved_data, tuple) else not saved_data:
+    p_data = pay_res.data[0]
+    
+    # চেক করা হচ্ছে নম্বর সেভ করা আছে কি না
+    if w_type == 'recharge':
+        has_data = p_data.get('recharge_num')
+    else:
+        # বিকাশ, নগদ, রকেট বা বাইনান্স—যেকোনো একটি থাকলেই হবে
+        has_data = any([p_data.get('bkash_num'), p_data.get('nagad_num'), p_data.get('rocket_num'), p_data.get('binance_id')])
+
+    # নম্বর না থাকলে বা 'Not Set' থাকলে উইথড্র করতে দিবে না
+    if not has_data or has_data == 'Not Set':
         return await call.message.answer("⚠️ আপনার কোনো পেমেন্ট নম্বর সেভ করা নেই! \nআগে 'Add Payment Method' বাটন থেকে নম্বর সেভ করুন।")
 
     await state.update_data(withdraw_type=w_type)
@@ -772,7 +785,7 @@ async def ask_withdraw_amount(call: types.CallbackQuery, state: FSMContext):
         f"পরিমাণটি সংখ্যায় লিখুন (যেমন: ৫০):"
     )
     await call.answer()
-    # --- ১. উইথড্র পরিমাণ গ্রহণ এবং অ্যাডমিনকে পাঠানো ---
+    
 
     # --- ১. উইথড্র পরিমাণ গ্রহণ এবং অ্যাডমিনকে পাঠানো ---
 
