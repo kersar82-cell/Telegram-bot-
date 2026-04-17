@@ -183,24 +183,27 @@ async def start(message: types.Message, state: FSMContext):
             "বটটি ব্যবহার করতে নিচের বাটনে ক্লিক করে গ্রুপে জয়েন করুন।",
             reply_markup=keyboard
         )
+        
     username = f"@{message.from_user.username}" if message.from_user.username else "No_Username"
     args = message.get_args()
     
-    # ১. প্রথমে চেক করি ইউজার আগে থেকে ডাটাবেসে আছে কি না
-    cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
-    existing_user = cursor.fetchone()
+    # ১. চেক করি ইউজার আগে থেকে Supabase-এ আছে কি না (অ্যাসিঙ্ক্রোনাসভাবে)
+    response = await asyncio.to_thread(supabase.table("users").select("user_id").eq("user_id", user_id).execute)
 
-    # ২. যদি ইউজার একদম নতুন হয় (ডাটাবেসে নেই)
-    if not existing_user:
+    # ২. যদি ইউজার একদম নতুন হয়
+    if not response.data:
         referrer_id = 0
         if args and args.isdigit():
             temp_id = int(args)
             # চেক করা হচ্ছে ইউজার নিজের লিংকে নিজে ক্লিক করেছে কি না
             if temp_id != user_id:
                 referrer_id = temp_id
-                # ১. রেফারারের কাউন্ট ১ বাড়ানো
-                cursor.execute("UPDATE users SET referral_count = referral_count + 1 WHERE user_id = ?", (referrer_id,))
-                db.commit()
+                
+                # ১. রেফারারের কাউন্ট ১ বাড়ানো (balances টেবিলে)
+                ref_user = await asyncio.to_thread(supabase.table("balances").select("referral_count").eq("user_id", referrer_id).execute)
+                if ref_user.data:
+                    new_count = ref_user.data[0]['referral_count'] + 1
+                    await asyncio.to_thread(supabase.table("balances").update({"referral_count": new_count}).eq("user_id", referrer_id).execute)
                 
                 # ২. রেফারারকে মেসেজ পাঠানো
                 try:
@@ -208,20 +211,18 @@ async def start(message: types.Message, state: FSMContext):
                 except:
                     pass
 
-        # ৩. ডাটাবেসে নতুন ইউজার সেভ করা (আপনার সব কলামের সিরিয়াল ঠিক রেখে)
-        # কলামগুলো: user_id, username, balance, referral_count, referred_by, refer_balance, withdraw_count
-        sql = "INSERT INTO users (user_id, username, balance, referral_count, referred_by, refer_balance, withdraw_count) VALUES (?, ?, ?, ?, ?, ?, ?)"
-        cursor.execute(sql, (user_id, username, 0.0, 0, referrer_id, 0.0, 0))
-        db.commit()
+        # ৩. ডাটাবেসে নতুন ইউজার সেভ করা (নতুন ৩টি টেবিলে)
+        await asyncio.to_thread(supabase.table("users").insert({"user_id": user_id, "username": username, "referred_by": referrer_id}).execute)
+        await asyncio.to_thread(supabase.table("balances").insert({"user_id": user_id}).execute)
+        await asyncio.to_thread(supabase.table("payment_methods").insert({"user_id": user_id}).execute)
             
     else:
-        # যদি ইউজার আগে থেকেই থাকে, শুধু ইউজারনেম আপডেট করা (ঐচ্ছিক)
-        cursor.execute("UPDATE users SET username = ? WHERE user_id = ?", (username, user_id))
-        db.commit()
+        # যদি ইউজার আগে থেকেই থাকে, শুধু ইউজারনেম আপডেট করা (users টেবিলে)
+        await asyncio.to_thread(supabase.table("users").update({"username": username}).eq("user_id", user_id).execute)
 
     # ৩. ইনলাইন বাটন ও ওয়েলকাম মেসেজ সেটআপ
     inline_kb = types.InlineKeyboardMarkup(row_width=2)
-    help_button = types.InlineKeyboardButton(text="🆘 Contact Support", url="t.me/INSTAFB_SUPPORT") 
+    help_button = types.InlineKeyboardButton(text="🆘 Contact Support", url="https://t.me/INSTAFB_SUPPORT") 
     inline_kb.add(help_button)
 
     welcome_text = """📢 আজকের কাজের আপডেট এবং রেট লিস্ট 📢
