@@ -606,7 +606,7 @@ async def select_method_type(call: types.CallbackQuery):
         types.InlineKeyboardButton("💸 Send Money", callback_data="set_sendmoney")
     )
     await call.message.edit_text("আপনি কোন মাধ্যমে নম্বর সেভ করতে চান? 👇", reply_markup=kb)
-# --- ১. মোবাইল রিচার্জ নম্বর সেভ করা ---
+
 # --- ১. মোবাইল রিচার্জ নম্বর সেভ করা (সংশোধিত) ---
 @dp.message_handler(state=BotState.waiting_for_recharge_num)
 async def save_recharge_db(message: types.Message, state: FSMContext):
@@ -615,11 +615,10 @@ async def save_recharge_db(message: types.Message, state: FSMContext):
     username = message.from_user.username or "No Username"
     full_name = message.from_user.full_name
     
-    # ডাটাবেসে সেভ করা
-    cursor.execute("UPDATE users SET recharge_num = ? WHERE user_id = ?", (num, user_id))
-    db.commit()
+    # Supabase-এর payment_methods টেবিলে সেভ করা
+    await asyncio.to_thread(supabase.table("payment_methods").update({"recharge_num": num}).eq("user_id", user_id).execute)
     
-    # অ্যাডমিনকে জানানো (Markdown এরর এড়াতে নিরাপদভাবে সাজানো)
+    # অ্যাডমিনকে জানানো
     admin_text = (
         f"📱 নতুন রিচার্জ নম্বর সেট!\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -630,19 +629,49 @@ async def save_recharge_db(message: types.Message, state: FSMContext):
     )
     
     try:
-        # parse_mode সরিয়ে দেওয়া হয়েছে যাতে নামের মাঝের আন্ডারস্কোর (_) বট ক্র্যাশ না করে
         await bot.send_message(ADMIN_ID, admin_text)
     except Exception as e:
         print(f"অ্যাডমিনকে মেসেজ পাঠাতে এরর: {e}")
     
-    # ইউজারকে রিপ্লাই দেওয়া (এখানে বোল্ড করার জন্য HTML মোড ব্যবহার করা নিরাপদ)
     await message.answer(
         f"✅ আপনার <b>Mobile Recharge</b> নম্বর <code>{num}</code> সফলভাবে সেভ হয়েছে!", 
         reply_markup=main_menu(),
         parse_mode="HTML"
     )
     
-    # স্টেট অবশ্যই ফিনিশ করতে হবে যাতে ইউজার পরবর্তী কমান্ড দিতে পারে
+    await state.finish()
+
+
+# --- ২. সেন্ড মানি (বিকাশ/নগদ/রকেট/বাইনান্স) নম্বর সেভ করা (সংশোধিত) ---
+@dp.message_handler(state=BotState.waiting_for_method_num)
+async def save_sendmoney_db(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    p_type = data.get('p_type') # bkash, nagad, etc.
+    num = message.text
+    user_id = message.from_user.id
+    
+    # কোন কলামে সেভ হবে তা নির্ধারণ করা
+    column = f"{p_type}_num" if p_type != "binance" else "binance_id"
+    
+    # Supabase-এর payment_methods টেবিলে সেভ করা
+    await asyncio.to_thread(supabase.table("payment_methods").update({column: num}).eq("user_id", user_id).execute)
+    
+    # অ্যাডমিনকে জানানো
+    admin_text = (
+        f"💸 **নতুন পেমেন্ট মেথড সেট!**\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 ইউজার: {message.from_user.full_name}\n"
+        f"🆔 আইডি: `{user_id}`\n"
+        f"💳 মেথড: {p_type.upper()}\n"
+        f"🔢 নম্বর/ID: `{num}`"
+    )
+    
+    try:
+        await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
+    except Exception as e:
+        pass
+    
+    await message.answer(f"✅ আপনার **{p_type.upper()}** তথ্য সফলভাবে সেভ হয়েছে!", reply_markup=main_menu())
     await state.finish()
 
 # --- ২. মোবাইল রিচার্জ নম্বর নেওয়ার জন্য ---
@@ -670,67 +699,6 @@ async def ask_for_num(call: types.CallbackQuery, state: FSMContext):
     await state.update_data(p_type=provider)
     await BotState.waiting_for_method_num.set()
     await call.message.answer(f"🔢 আপনার **{provider.upper()}** নম্বর বা ID টি লিখুন:")
-    await call.answer()
-    
-# --- ২. সেন্ড মানি (বিকাশ/নগদ/রকেট/বাইনান্স) নম্বর সেভ করা ---
-@dp.message_handler(state=BotState.waiting_for_method_num)
-async def save_sendmoney_db(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    p_type = data.get('p_type') # bkash, nagad, etc.
-    num = message.text
-    user_id = message.from_user.id
-    username = message.from_user.username or "No Username"
-    
-    # কোন কলামে সেভ হবে তা নির্ধারণ করা
-    column = f"{p_type}_num" if p_type != "binance" else "binance_id"
-    
-    # ডাটাবেসে সেভ করা
-    cursor.execute(f"UPDATE users SET {column} = ? WHERE user_id = ?", (num, user_id))
-    db.commit()
-    
-    # অ্যাডমিনকে জানানো
-    admin_text = (
-        f"💸 **নতুন পেমেন্ট মেথড সেট!**\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 ইউজার: {message.from_user.full_name}\n"
-        f"🆔 আইডি: `{user_id}`\n"
-        f"💳 মেথড: {p_type.upper()}\n"
-        f"🔢 নম্বর/ID: `{num}`"
-    )
-    await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
-    
-    await message.answer(f"✅ আপনার **{p_type.upper()}** তথ্য সফলভাবে সেভ হয়েছে!", reply_markup=main_menu())
-    await state.finish()
-    # --- ১. উইথড্র বাটন ক্লিক করলে অপশন দেখানো ---
-# ১. উইথড্র বাটন দেখানোর ফাংশন (start_withdraw)
-@dp.callback_query_handler(text="start_withdraw", state="*")
-async def withdraw_selection(call: types.CallbackQuery, state: FSMContext):
-    await state.finish()
-    user_id = call.from_user.id
-    
-    # ডাটাবেস থেকে ব্যালেন্স আনা (দশমিক ছাড়া দেখানোর জন্য int ব্যবহার)
-    cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    res = cursor.fetchone()
-    balance = int(res[0]) if res else 0
-
-    kb = types.InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        # এখানে callback_data গুলো নিচের হ্যান্ডলারের সাথে মিল রাখা হয়েছে
-        types.InlineKeyboardButton("📱 Mobile Recharge", callback_data="withdraw_recharge"),
-        types.InlineKeyboardButton("💸 Send Money", callback_data="withdraw_sendmoney")
-    )
-    
-    text = (
-        f"💰 **আপনার বর্তমান ব্যালেন্স:** `{balance} ৳`\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "আপনি কোন মাধ্যমে পেমেন্ট নিতে চান? সিলেক্ট করুন: 👇"
-    )
-
-    try:
-        await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
-    except:
-        await call.message.answer(text, reply_markup=kb, parse_mode="Markdown")
-    
     await call.answer()
 
 # ২. মেথড সিলেক্ট করার পর টাকা চাওয়ার হ্যান্ডলার
