@@ -1742,13 +1742,12 @@ async def show_leaderboard(message: types.Message):
     except Exception as e:
         print(f"Leaderboard error: {e}")
         await message.answer("❌ লিডারবোর্ড লোড করতে সমস্যা হচ্ছে।")
-        
- # ৩. ফেক বা রিয়েল ইউজারের ব্যালেন্স এডিট করার কমান্ড (অ্যাডমিনের জন্য)
+# ৩. ফেক বা রিয়েল ইউজারের ব্যালেন্স এডিট করার কমান্ড (অ্যাডমিনের জন্য)
 @dp.message_handler(commands=['edit_fake'], user_id=ADMIN_ID)
 async def edit_fake_balance(message: types.Message):
     args = message.get_args().split()
     if len(args) != 2:
-        return await message.answer("⚠️ নিয়ম: `/edit_fake USER_ID NEW_BALANCE`")
+        return await message.answer("⚠️ নিয়ম: <code>/edit_fake USER_ID NEW_BALANCE</code>", parse_mode="HTML")
 
     target_uid = args[0]
     try:
@@ -1756,56 +1755,67 @@ async def edit_fake_balance(message: types.Message):
     except:
         return await message.answer("❌ ব্যালেন্স নম্বর হতে হবে।")
 
-    cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (new_balance, target_uid))
-    db.commit()
-    
-    await message.answer(f"✅ সাকসেস!\n🆔 আইডি: `{target_uid}`\n💰 ব্যালেন্স সেট: `{new_balance}` ৳")
+    try:
+        # Supabase-এর balances টেবিলে ব্যালেন্স আপডেট করা
+        await asyncio.to_thread(supabase.table("balances").update({"main_balance": new_balance}).eq("user_id", target_uid).execute)
+        
+        await message.answer(f"✅ সাকসেস!\n🆔 আইডি: <code>{target_uid}</code>\n💰 ব্যালেন্স সেট: <code>{new_balance}</code> ৳", parse_mode="HTML")
+    except Exception as e:
+        await message.answer("❌ ব্যালেন্স আপডেট করতে সমস্যা হয়েছে।")
+
+# ৪. ফেক বা রিয়েল ইউজার ডিলিট করার কমান্ড
 @dp.message_handler(commands=['del_fake'], user_id=ADMIN_ID)
 async def delete_fake_user(message: types.Message):
     # নিয়ম: /del_fake [ইউজার_আইডি]
     args = message.get_args().split()
     
     if len(args) != 1:
-        return await message.answer("⚠️ সঠিক নিয়ম: `/del_fake USER_ID` \n\n"
-                                   "উদাহরণ: `/del_fake 123456` \n"
-                                   "(লিডারবোর্ড থেকে আইডি কপি করে এখানে বসান)")
+        return await message.answer("⚠️ সঠিক নিয়ম: <code>/del_fake USER_ID</code> \n\n"
+                                   "উদাহরণ: <code>/del_fake 123456</code> \n"
+                                   "(লিডারবোর্ড থেকে আইডি কপি করে এখানে বসান)", parse_mode="HTML")
 
     target_uid = args[0]
 
-    # ডাটাবেস থেকে ওই আইডিটি মুছে ফেলা
-    cursor.execute("DELETE FROM users WHERE user_id = ?", (target_uid,))
-    # চাইলে তার স্ট্যাটাস টেবিল থেকেও ডাটা মুছে দিতে পারেন (অপশনাল)
-    cursor.execute("DELETE FROM stats WHERE user_id = ?", (target_uid,))
-    
-    db.commit()
-    
-    await message.answer(f"🗑️ সফলভাবে ডিলিট করা হয়েছে!\n🆔 আইডি: `{target_uid}` এখন আর লিডারবোর্ডে দেখাবে না।")
+    try:
+        # সব টেবিল থেকে ওই আইডির ডাটা মুছে ফেলা
+        await asyncio.to_thread(supabase.table("users").delete().eq("user_id", target_uid).execute)
+        await asyncio.to_thread(supabase.table("balances").delete().eq("user_id", target_uid).execute)
+        await asyncio.to_thread(supabase.table("daily_stats").delete().eq("user_id", target_uid).execute)
+        await asyncio.to_thread(supabase.table("payment_methods").delete().eq("user_id", target_uid).execute)
+        await asyncio.to_thread(supabase.table("user_id_logs").delete().eq("user_id", target_uid).execute)
+        
+        await message.answer(f"🗑️ সফলভাবে ডিলিট করা হয়েছে!\n🆔 আইডি: <code>{target_uid}</code> এখন আর ডাটাবেস বা লিডারবোর্ডে দেখাবে না।", parse_mode="HTML")
+    except Exception as e:
+        await message.answer("❌ ইউজার ডিলিট করতে কারিগরি সমস্যা হয়েছে।")
     # ==========================================
 # ব্লক করা ইউজারদের তালিকা দেখার কমান্ড
 # ==========================================
 @dp.message_handler(commands=['check_blocks'], user_id=ADMIN_ID)
 async def list_blocked_users(message: types.Message):
-    # ডাটাবেস থেকে ব্লকড ইউজারদের তথ্য আনা
-    cursor.execute("SELECT user_id FROM blacklist")
-    blocked_list = cursor.fetchall()
+    try:
+        # Supabase থেকে ব্লকড ইউজারদের তথ্য আনা
+        bl_res = await asyncio.to_thread(supabase.table("blacklist").select("user_id").execute())
+        blocked_list = bl_res.data
 
-    if not blocked_list:
-        return await message.answer("✅ বর্তমানে কোনো ইউজার ব্লক নেই।")
+        if not blocked_list:
+            return await message.answer("✅ বর্তমানে কোনো ইউজার ব্লক নেই।")
 
-    response = "🚫 **ব্লক করা ইউজারদের তালিকা:**\n\n"
-    for index, row in enumerate(blocked_list, start=1):
-        uid = row[0]
-        # ইউজারনেম খুঁজে বের করার চেষ্টা করা (যদি থাকে)
-        cursor.execute("SELECT username FROM users WHERE user_id = ?", (uid,))
-        user_info = cursor.fetchone()
-        
-        username = f"@{user_info[0]}" if user_info and user_info[0] else "নাম পাওয়া যায়নি"
-        response += f"{index}. ID: `{uid}` | User: {username}\n"
+        response = "🚫 <b>ব্লক করা ইউজারদের তালিকা:</b>\n\n"
+        for index, row in enumerate(blocked_list, start=1):
+            uid = row.get('user_id')
+            
+            # ইউজারনেম খুঁজে বের করার চেষ্টা করা (users টেবিল থেকে)
+            usr_res = await asyncio.to_thread(supabase.table("users").select("username").eq("user_id", uid).execute())
+            
+            username = f"@{usr_res.data[0].get('username')}" if usr_res.data and usr_res.data[0].get('username') else "নাম পাওয়া যায়নি"
+            response += f"{index}. ID: <code>{uid}</code> | User: {username}\n"
 
-    await message.answer(response, parse_mode="Markdown")
+        await message.answer(response, parse_mode="HTML")
+    except Exception as e:
+        await message.answer("❌ ডাটাবেস থেকে ব্লকলিস্ট আনতে সমস্যা হয়েছে।")
 
 
-        # --- শুধুমাত্র অ্যাডমিনের পেমেন্ট কন্ট্রোল ---
+# --- শুধুমাত্র অ্যাডমিনের পেমেন্ট কন্ট্রোল ---
 @dp.callback_query_handler(lambda c: c.data.startswith('admin_payment_'), user_id=ADMIN_ID)
 async def finalize_admin_action(call: types.CallbackQuery):
     data = call.data.split('_')
@@ -1817,88 +1827,103 @@ async def finalize_admin_action(call: types.CallbackQuery):
     if action == "approve":
         # ১. ইউজারকে মেসেজ পাঠানো
         try:
-            await bot.send_message(target_uid, f"✅ **আপনার উইথড্র অ্যাপ্রুভ হয়েছে!**\n💰 পরিমাণ: {amount} ৳\nটাকা আপনার একাউন্টে পাঠিয়ে দেওয়া হয়েছে।")
+            await bot.send_message(target_uid, f"✅ <b>আপনার উইথড্র অ্যাপ্রুভ হয়েছে!</b>\n💰 পরিমাণ: {amount} ৳\nটাকা আপনার একাউন্টে পাঠিয়ে দেওয়া হয়েছে।", parse_mode="HTML")
         except: pass
             
         # ২. অ্যাডমিন মেসেজ আপডেট (এখানে আর কোনো প্রশ্ন করবে না)
-        await call.message.edit_text(call.message.text + f"\n\n✅ **Status: Approved (সফল)**")
+        await call.message.edit_text(call.message.html_text + f"\n\n✅ <b>Status: Approved (সফল)</b>", parse_mode="HTML")
         await call.answer("পেমেন্ট অ্যাপ্রুভড!", show_alert=True)
 
     elif action == "reject":
-        # টাকা ফেরত দেওয়া
-        cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, target_uid))
-        db.commit()
-        
         try:
-            await bot.send_message(target_uid, f"❌ **আপনার উইথড্র রিজেক্ট করা হয়েছে।**\n💰 {amount} ৳ ফেরত দেওয়া হয়েছে।")
-        except: pass
+            # টাকা ফেরত দেওয়া (balances টেবিল থেকে)
+            bal_res = await asyncio.to_thread(supabase.table("balances").select("main_balance").eq("user_id", target_uid).execute())
+            if bal_res.data:
+                current_bal = bal_res.data[0].get('main_balance', 0)
+                await asyncio.to_thread(supabase.table("balances").update({"main_balance": current_bal + amount}).eq("user_id", target_uid).execute())
             
-        await call.message.edit_text(call.message.text + "\n\n❌ **Status: Rejected (টাকা ফেরত)**")
-        await call.answer("রিজেক্ট করা হয়েছে!", show_alert=True)
-        # --- ধাপ ২: রেফারেল মেনু আপডেট ---
+            try:
+                await bot.send_message(target_uid, f"❌ <b>আপনার উইথড্র রিজেক্ট করা হয়েছে।</b>\n💰 {amount} ৳ ফেরত দেওয়া হয়েছে।", parse_mode="HTML")
+            except: pass
+                
+            await call.message.edit_text(call.message.html_text + "\n\n❌ <b>Status: Rejected (টাকা ফেরত)</b>", parse_mode="HTML")
+            await call.answer("রিজেক্ট করা হয়েছে!", show_alert=True)
+            
+        except Exception as e:
+            await call.answer("❌ টাকা রিফান্ড করতে সমস্যা হয়েছে।", show_alert=True)
+        
+# --- ধাপ ২: রেফারেল মেনু আপডেট (Supabase ভার্সন) ---
 @dp.message_handler(lambda message: message.text == "🎁INVITE BONUS")
 async def referral_menu(message: types.Message):
     user_id = message.from_user.id
     
-    # ডাটাবেস থেকে রেফার ব্যালেন্স এবং মেইন ব্যালেন্স আনা
-    cursor.execute("SELECT refer_balance, balance, referral_count FROM users WHERE user_id=?", (user_id,))
-    res = cursor.fetchone()
-    ref_balance = res[0] if res else 0
-    main_balance = res[1] if res else 0
-    total_ref = res[2] if res else 0
-    
-    # ইনলাইন কিবোর্ড তৈরি (নতুন বাটনসহ)
-    kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        types.InlineKeyboardButton("💰 Add to Main Balance", callback_data="transfer_ref_request"),
-        types.InlineKeyboardButton("📜 Rules", callback_data="ref_rules"),
-        types.InlineKeyboardButton("📋 Refer List", callback_data="view_ref_list")
-    )
-    
-    ref_link = f"https://t.me/{(await bot.get_me()).username}?start={user_id}"
-    
-    text = (
-        f"👥 **রেফারেল ড্যাশবোর্ড**\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"📊 **মোট রেফারেল:** `{total_ref} জন`\n"  # <--- এখানে নতুন লাইন
-        f"💵 **রেফার ব্যালেন্স:** `{ref_balance:.2f} ৳`\n"
-        f"💰 **মেইন ব্যালেন্স:** `{main_balance:.2f} ৳`\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🔗 **আপনার রেফার লিংক:**\n`{ref_link}`\n\n"
-        f"✨ রেফার ব্যালেন্স মেইন ব্যালেন্সে নিতে নিচের বাটনে ক্লিক করুন। 👇"
-    )
-    
-    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
-# --- ১. ইউজার যখন বাটনে ক্লিক করবে ---
+    try:
+        # Supabase-এর balances টেবিল থেকে রেফার ও মেইন ব্যালেন্স আনা
+        res = await asyncio.to_thread(supabase.table("balances").select("refer_balance, main_balance, referral_count").eq("user_id", user_id).execute)
+        
+        if res.data:
+            ref_balance = res.data[0].get('refer_balance', 0)
+            main_balance = res.data[0].get('main_balance', 0)
+            total_ref = res.data[0].get('referral_count', 0)
+        else:
+            ref_balance = main_balance = total_ref = 0
+            
+        # ইনলাইন কিবোর্ড তৈরি
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        kb.add(
+            types.InlineKeyboardButton("💰 Add to Main Balance", callback_data="transfer_ref_request"),
+            types.InlineKeyboardButton("📜 Rules", callback_data="ref_rules"),
+            types.InlineKeyboardButton("📋 Refer List", callback_data="view_ref_list")
+        )
+        
+        bot_info = await bot.get_me()
+        ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
+        
+        text = (
+            f"👥 <b>রেফারেল ড্যাশবোর্ড</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 <b>মোট রেফারেল:</b> <code>{total_ref} জন</code>\n"
+            f"💵 <b>রেফার ব্যালেন্স:</b> <code>{ref_balance:.2f} ৳</code>\n"
+            f"💰 <b>মেইন ব্যালেন্স:</b> <code>{main_balance:.2f} ৳</code>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🔗 <b>আপনার রেফার লিংক:</b>\n<code>{ref_link}</code>\n\n"
+            f"✨ রেফার ব্যালেন্স মেইন ব্যালেন্সে নিতে নিচের বাটনে ক্লিক করুন। 👇"
+        )
+        
+        await message.answer(text, reply_markup=kb, parse_mode="HTML")
+    except Exception as e:
+        await message.answer("❌ রেফারেল তথ্য লোড করতে সমস্যা হয়েছে।")
+
+# --- ১. ইউজার যখন বাটনে ক্লিক করবে (ট্রান্সফার রিকোয়েস্ট) ---
 @dp.callback_query_handler(text="transfer_ref_request")
 async def ask_transfer_amount(call: types.CallbackQuery, state: FSMContext):
-    # এখানে REFER_TRANSFER_ENABLED বদলে REFER_ADD_ENABLED করে দেওয়া হয়েছে
+    # রেফার ট্রান্সফার এনাবল কি না চেক করা
     if not REFER_ADD_ENABLED:
-        return await call.answer("⚠️ বর্তমানে রেফার ব্যালেন্স ট্রান্সফার অপশনটি সাময়িকভাবে বন্ধ আছে।\n 🔊⏰খোলার সময় রাত ছয়টা থেকে বারোটা পর্যন্ত", show_alert=True)
+        return await call.answer("⚠️ বর্তমানে রেফার ব্যালেন্স ট্রান্সফার অপশনটি সাময়িকভাবে বন্ধ আছে।\n🔊⏰খোলার সময় রাত ছয়টা থেকে বারোটা পর্যন্ত", show_alert=True)
     
     user_id = call.from_user.id
     
-    # ডাটাবেস থেকে ইউজারের রেফার ব্যালেন্স চেক করা
-    cursor.execute("SELECT refer_balance FROM users WHERE user_id=?", (user_id,))
-    res = cursor.fetchone()
-    ref_bal = res[0] if res is not None else 0
-    
-    # যদি ব্যালেন্স ০ বা তার কম হয়
-    if ref_bal <= 0:
-        return await call.answer("⚠️ আপনার কোনো রেফার ব্যালেন্স নেই!", show_alert=True)
-    
-    # স্টেট সেট করা
-    await BotState.waiting_for_transfer_amount.set() 
-    
-    # ইউজারকে মেসেজ দেওয়া
-    text = (
-        f"💰 আপনার বর্তমান রেফার ব্যালেন্স: `{ref_bal:.2f} ৳`\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "আপনি কত টাকা মেইন ব্যালেন্সে নিতে চান? পরিমাণটি সংখ্যায় লিখুন (যেমন: ২০):"
-    )
-    await call.message.answer(text)
-    await call.answer()
-                             
+    try:
+        # ডাটাবেস থেকে রেফার ব্যালেন্স চেক করা
+        res = await asyncio.to_thread(supabase.table("balances").select("refer_balance").eq("user_id", user_id).execute)
+        ref_bal = res.data[0].get('refer_balance', 0) if res.data else 0
+        
+        if ref_bal <= 0:
+            return await call.answer("⚠️ আপনার কোনো রেফার ব্যালেন্স নেই!", show_alert=True)
+        
+        # স্টেট সেট করা
+        await BotState.waiting_for_transfer_amount.set() 
+        
+        text = (
+            f"💰 আপনার বর্তমান রেফার ব্যালেন্স: <code>{ref_bal:.2f} ৳</code>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"আপনি কত টাকা মেইন ব্যালেন্সে নিতে চান? পরিমাণটি সংখ্যায় লিখুন (যেমন: ২০):"
+        )
+        await call.message.answer(text, parse_mode="HTML")
+        await call.answer()
+    except Exception as e:
+        await call.answer("❌ ব্যালেন্স চেক করতে সমস্যা হয়েছে।", show_alert=True)
+            
     # --- ২. ইউজার টাকার পরিমাণ লিখে পাঠালে অ্যাডমিনকে জানানো ---
 # এটি টাকা রিসিভ করার হ্যান্ডলার
 @dp.message_handler(state=BotState.waiting_for_transfer_amount)
@@ -1911,46 +1936,49 @@ async def send_transfer_request_to_admin(message: types.Message, state: FSMConte
     amount = float(input_text)
     user_id = message.from_user.id
     
-    # ডাটাবেস থেকে ইউজারের বর্তমান রেফার ব্যালেন্স চেক করা
-    cursor.execute("SELECT refer_balance FROM users WHERE user_id=?", (user_id,))
-    res = cursor.fetchone()
-    current_ref_bal = res[0] if res else 0
-
-    # চেক করা হচ্ছে ইউজারের পর্যাপ্ত ব্যালেন্স আছে কি না
-    if amount > current_ref_bal:
-        await state.finish() # ব্যালেন্স না থাকলে স্টেট বন্ধ করে দেওয়া ভালো
-        return await message.answer(f"❌ আপনার পর্যাপ্ত রেফার ব্যালেন্স নেই!\nবর্তমান ব্যালেন্স: `{current_ref_bal:.2f} ৳`")
-
-    if amount <= 0:
-        return await message.answer("❌ সর্বনিম্ন ১ টাকা ট্রান্সফার করা যাবে।")
-
-    # অ্যাডমিনের জন্য বাটন (ADMIN_ID আপনার ওপরে ডিফাইন করা থাকতে হবে)
-    kb = types.InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        types.InlineKeyboardButton("✅ Add Money", callback_data=f"ref_adm_add_{user_id}_{amount}"),
-        types.InlineKeyboardButton("❌ Reject", callback_data=f"ref_adm_rej_{user_id}_{amount}")
-    )
-
-    admin_text = (
-        f"🔄 **নতুন ব্যালেন্স ট্রান্সফার রিকোয়েস্ট!**\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 নাম: {message.from_user.full_name}\n"
-        f"🆔 আইডি: `{user_id}`\n"
-        f"💰 পরিমাণ: **{amount:.2f} ৳**\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"অ্যাপ্রুভ করতে নিচের বাটনে ক্লিক করুন।"
-    )
-
     try:
-        await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb, parse_mode="Markdown")
-        await message.answer(f"✅ আপনার **{amount:.2f} ৳** ট্রান্সফার রিকোয়েস্ট অ্যাডমিনের কাছে পাঠানো হয়েছে।\n⏳ অ্যাডমিন এপ্রুভ করলে মেইন ব্যালেন্সে যোগ হবে।")
+        # ডাটাবেস থেকে ইউজারের বর্তমান রেফার ব্যালেন্স চেক করা (Supabase balances টেবিল)
+        res = await asyncio.to_thread(supabase.table("balances").select("refer_balance").eq("user_id", user_id).execute())
+        current_ref_bal = res.data[0].get('refer_balance', 0) if res.data else 0
+
+        # চেক করা হচ্ছে ইউজারের পর্যাপ্ত ব্যালেন্স আছে কি না
+        if amount > current_ref_bal:
+            await state.finish() # ব্যালেন্স না থাকলে স্টেট বন্ধ করে দেওয়া ভালো
+            return await message.answer(f"❌ আপনার পর্যাপ্ত রেফার ব্যালেন্স নেই!\nবর্তমান ব্যালেন্স: <code>{current_ref_bal:.2f} ৳</code>", parse_mode="HTML")
+
+        if amount <= 0:
+            return await message.answer("❌ সর্বনিম্ন ১ টাকা ট্রান্সফার করা যাবে।")
+
+        # অ্যাডমিনের জন্য বাটন (ADMIN_ID আপনার ওপরে ডিফাইন করা থাকতে হবে)
+        kb = types.InlineKeyboardMarkup(row_width=2)
+        kb.add(
+            types.InlineKeyboardButton("✅ Add Money", callback_data=f"ref_adm_add_{user_id}_{amount}"),
+            types.InlineKeyboardButton("❌ Reject", callback_data=f"ref_adm_rej_{user_id}_{amount}")
+        )
+
+        admin_text = (
+            f"🔄 <b>নতুন ব্যালেন্স ট্রান্সফার রিকোয়েস্ট!</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 নাম: {message.from_user.full_name}\n"
+            f"🆔 আইডি: <code>{user_id}</code>\n"
+            f"💰 পরিমাণ: <b>{amount:.2f} ৳</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"অ্যাপ্রুভ করতে নিচের বাটনে ক্লিক করুন।"
+        )
+
+        try:
+            await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb, parse_mode="HTML")
+            await message.answer(f"✅ আপনার <b>{amount:.2f} ৳</b> ট্রান্সফার রিকোয়েস্ট অ্যাডমিনের কাছে পাঠানো হয়েছে।\n⏳ অ্যাডমিন এপ্রুভ করলে মেইন ব্যালেন্সে যোগ হবে।", parse_mode="HTML")
+        except Exception as e:
+            await message.answer("⚠️ অ্যাডমিনকে মেসেজ পাঠানো সম্ভব হয়নি।")
+            
     except Exception as e:
-        await message.answer("⚠️ অ্যাডমিনকে মেসেজ পাঠানো সম্ভব হয়নি।")
+        await message.answer("❌ কারিগরি ত্রুটির কারণে রিকোয়েস্ট পাঠানো যায়নি।")
     
     # কাজ শেষ হলে স্টেট ক্লিয়ার করুন
     await state.finish()
-
-    # --- ৫. অ্যাডমিন যখন ব্যালেন্স ট্রান্সফার এপ্রুভ বা রিজেক্ট করবে ---
+        
+# --- ৫. অ্যাডমিন যখন ব্যালেন্স ট্রান্সফার এপ্রুভ বা রিজেক্ট করবে ---
 @dp.callback_query_handler(lambda c: c.data.startswith('ref_adm_'), user_id=ADMIN_ID)
 async def handle_transfer_approval(call: types.CallbackQuery):
     # ডাটা আলাদা করা (ref_adm_add_USERID_AMOUNT)
@@ -1960,39 +1988,55 @@ async def handle_transfer_approval(call: types.CallbackQuery):
     amount = float(data[4])
 
     if action == "add":
-        # ১. ডাটাবেসে মেইন ব্যালেন্স যোগ এবং রেফার ব্যালেন্স বিয়োগ করা
-        # আমরা সরাসরি SQL দিয়ে একবারে করছি যাতে কোনো ভুল না হয়
-        cursor.execute(
-            "UPDATE users SET balance = balance + ?, refer_balance = refer_balance - ? WHERE user_id = ?", 
-            (amount, amount, target_uid)
-        )
-        db.commit()
-
-        # ২. ইউজারকে সুখবর পাঠানো
         try:
-            success_text = (
-                f"🎉 **অভিনন্দন!**\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"আপনার **{amount:.2f} ৳** রেফার ব্যালেন্স থেকে মেইন ব্যালেন্সে সফলভাবে যুক্ত হয়েছে।\n"
-                f"এখন আপনি এই টাকা উইথড্র করতে পারবেন। ধন্যবাদ! ✨"
-            )
-            await bot.send_message(target_uid, success_text, parse_mode="Markdown")
-        except:
-            pass
+            # ১. Supabase থেকে বর্তমান ব্যালেন্স আনা (balances টেবিল)
+            bal_res = await asyncio.to_thread(supabase.table("balances").select("main_balance, refer_balance").eq("user_id", target_uid).execute())
+            
+            if bal_res.data:
+                current_main = bal_res.data[0].get('main_balance', 0)
+                current_ref = bal_res.data[0].get('refer_balance', 0)
+                
+                # মেইন ব্যালেন্স যোগ এবং রেফার ব্যালেন্স বিয়োগ করা
+                new_main = current_main + amount
+                new_ref = current_ref - amount
+                
+                # ডাটাবেসে আপডেট করা
+                await asyncio.to_thread(supabase.table("balances").update({
+                    "main_balance": new_main,
+                    "refer_balance": new_ref
+                }).eq("user_id", target_uid).execute())
 
-        # ৩. অ্যাডমিন মেসেজ আপডেট করা
-        await call.message.edit_text(call.message.text + f"\n\n✅ **Status: Money Added to Main Balance**")
-        await call.answer("টাকা সফলভাবে মেইন ব্যালেন্সে যোগ হয়েছে!", show_alert=True)
+                # ২. ইউজারকে সুখবর পাঠানো (HTML ফরম্যাটে)
+                try:
+                    success_text = (
+                        f"🎉 <b>অভিনন্দন!</b>\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n"
+                        f"আপনার <b>{amount:.2f} ৳</b> রেফার ব্যালেন্স থেকে মেইন ব্যালেন্সে সফলভাবে যুক্ত হয়েছে।\n"
+                        f"এখন আপনি এই টাকা উইথড্র করতে পারবেন। ধন্যবাদ! ✨"
+                    )
+                    await bot.send_message(target_uid, success_text, parse_mode="HTML")
+                except:
+                    pass
+
+                # ৩. অ্যাডমিন মেসেজ আপডেট করা
+                await call.message.edit_text(call.message.html_text + f"\n\n✅ <b>Status: Money Added to Main Balance</b>", parse_mode="HTML")
+                await call.answer("টাকা সফলভাবে মেইন ব্যালেন্সে যোগ হয়েছে!", show_alert=True)
+            else:
+                await call.answer("❌ ইউজারের ডাটাবেস তথ্য পাওয়া যায়নি!", show_alert=True)
+                
+        except Exception as e:
+            await call.answer("❌ ডাটাবেস আপডেট করতে সমস্যা হয়েছে।", show_alert=True)
 
     elif action == "rej":
         # রিজেক্ট করলে শুধু স্ট্যাটাস আপডেট হবে (টাকা ইউজারের রেফার ব্যালেন্সেই থেকে যাবে)
         try:
-            await bot.send_message(target_uid, f"❌ দুঃখিত! আপনার **{amount:.2f} ৳** ব্যালেন্স ট্রান্সফার রিকোয়েস্ট অ্যাডমিন রিজেক্ট করেছে।")
+            await bot.send_message(target_uid, f"❌ দুঃখিত! আপনার <b>{amount:.2f} ৳</b> ব্যালেন্স ট্রান্সফার রিকোয়েস্ট অ্যাডমিন রিজেক্ট করেছে।", parse_mode="HTML")
         except:
             pass
 
-        await call.message.edit_text(call.message.text + "\n\n❌ **Status: Request Rejected**")
+        await call.message.edit_text(call.message.html_text + "\n\n❌ <b>Status: Request Rejected</b>", parse_mode="HTML")
         await call.answer("রিকোয়েস্ট রিজেক্ট করা হয়েছে।", show_alert=True)
+        
 @dp.callback_query_handler(lambda c: c.data == 'ref_rules')
 async def show_referral_rules(call: types.CallbackQuery):
     rules_text = (
@@ -2021,45 +2065,50 @@ async def back_to_main_menu(call: types.CallbackQuery):
     
     # কলব্যাক অ্যানসার (যাতে লোডিং চিহ্ন চলে যায়)
     await call.answer()
-@dp.callback_query_handler(lambda c: c.data == 'view_ref_list')
+
 async def show_id_only_ref_list(call: types.CallbackQuery):
     user_id = call.from_user.id
     
-    # ডাটাবেস থেকে শুধু রেফারেলদের আইডি (user_id) খুঁজে বের করা
-    cursor.execute("SELECT user_id FROM users WHERE referred_by = ?", (user_id,))
-    ref_users = cursor.fetchall()
-    
-    # যদি কেউ এখনো কাউকে রেফার না করে থাকে
-    if not ref_users:
-        return await call.answer("❌ আপনার এখনো কোনো সফল রেফারেল নেই।", show_alert=True)
-
-    text = "📋 **আপনার রেফারেল আইডি লিস্ট:**\n"
-    text += "━━━━━━━━━━━━━━━━━━━━\n"
-    
-    count = 1
-    for ref in ref_users:
-        r_id = ref[0]
-        
-        # প্রতিটি মেম্বারের শুধু আইডি নম্বরটি দেখাবে
-        text += f"{count}. 🆔 `{r_id}`\n"
-        count += 1
-        
-        # লিস্ট খুব বড় হয়ে গেলে ৫০ জন পর্যন্ত লিমিট রাখা ভালো
-        if count > 50:
-            text += "\n⚠️ *আরো অনেক মেম্বার আছে...*"
-            break
-
-    text += "━━━━━━━━━━━━━━━━━━━━\n"
-    text += f"👥 **মোট রেফারেল:** `{len(ref_users)}` জন"
-
-    # রেফারেল মেনুতে ফিরে যাওয়ার জন্য ব্যাক বাটন
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("⬅️ Back", callback_data="back_to_ref"))
-    
     try:
-        await call.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
-    except:
-        await call.message.answer(text, reply_markup=kb, parse_mode="Markdown")
+        # Supabase-এর users টেবিল থেকে শুধু রেফারেলদের আইডি খুঁজে বের করা
+        res = await asyncio.to_thread(supabase.table("users").select("user_id").eq("referred_by", user_id).execute())
+        ref_users = res.data
+        
+        # যদি কেউ এখনো কাউকে রেফার না করে থাকে
+        if not ref_users:
+            return await call.answer("❌ আপনার এখনো কোনো সফল রেফারেল নেই。", show_alert=True)
+
+        text = "📋 <b>আপনার রেফারেল আইডি লিস্ট:</b>\n"
+        text += "━━━━━━━━━━━━━━━━━━━━\n"
+        
+        count = 1
+        for ref in ref_users:
+            r_id = ref.get('user_id')
+            
+            # প্রতিটি মেম্বারের শুধু আইডি নম্বরটি দেখাবে
+            text += f"{count}. 🆔 <code>{r_id}</code>\n"
+            count += 1
+            
+            # লিস্ট খুব বড় হয়ে গেলে ৫০ জন পর্যন্ত লিমিট রাখা ভালো
+            if count > 50:
+                text += "\n⚠️ <i>আরো অনেক মেম্বার আছে...</i>"
+                break
+
+        text += "━━━━━━━━━━━━━━━━━━━━\n"
+        text += f"👥 <b>মোট রেফারেল:</b> <code>{len(ref_users)}</code> জন"
+
+        # রেফারেল মেনুতে ফিরে যাওয়ার জন্য ব্যাক বাটন
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("⬅️ Back", callback_data="back_to_ref"))
+        
+        try:
+            await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        except:
+            await call.message.answer(text, reply_markup=kb, parse_mode="HTML")
+            
+    except Exception as e:
+        await call.answer("❌ ডাটাবেস থেকে তালিকা আনতে সমস্যা হয়েছে।", show_alert=True)
+        
 @dp.message_handler(commands=['add_user'])
 async def admin_add_manual_user(message: types.Message):
     if message.from_user.id != ADMIN_ID: return # আপনার অ্যাডমিন চেক
