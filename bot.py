@@ -1,6 +1,7 @@
 import logging
 import sqlite3
 import os 
+import asyncio
 from flask import Flask
 from threading import Thread
 from aiogram import Bot, Dispatcher, executor, types
