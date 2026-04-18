@@ -439,10 +439,9 @@ async def go_back_to_home(call: types.CallbackQuery, state: FSMContext):
         
     # ৪. মেইন মেনু পাঠানো
     await call.message.answer("🏠 আপনি মেইন মেনুতে ফিরে এসেছেন।", reply_markup=main_menu())
-        
-# ১. ২এফএ কোড চাওয়ার বাটন হ্যান্ডলার
-
-        # ২. ২এফএ রিসিভ করে সরাসরি সেভ করা এবং ব্যালেন্স অ্যাড করা
+# ==========================================
+# ধাপ ৬: ২এফএ রিসিভ, সুপার-ফাস্ট সেভ এবং ব্যালেন্স অ্যাড
+# ==========================================
 @dp.message_handler(state=BotState.waiting_for_auto_2fa)
 async def process_auto_2fa_submission(message: types.Message, state: FSMContext):
     user_data = await state.get_data()
@@ -450,59 +449,83 @@ async def process_auto_2fa_submission(message: types.Message, state: FSMContext)
     password = user_data.get('auto_pass')
     category = user_data.get('category')
     tfa_code = message.text # ইউজারের পাঠানো কোড
+    user_id = message.from_user.id
 
-    if username and password:
-        # স্ট্যাটাসসহ ক্যাটাগরি নাম (যাতে আপনার প্যানেলে 'Done' দেখায়)
-        final_category = f"{category} [✅ Done]"
+    if not username or not password:
+        await state.finish()
+        return await message.answer("⚠️ সেশন এরর! দয়া করে মেনু থেকে আবার ক্যাটাগরি সিলেক্ট করুন।", reply_markup=main_menu())
 
-        # ১. সরাসরি Supabase এ সেভ
-        save_id_supabase(
-            user_id=message.from_user.id,
-            u_id=username,
-            u_pass=password,
-            two_fa=tfa_code,
-            category=final_category
+    # ১. ইউজারকে আটকে না রেখে প্রথমেই স্টেট ক্লিয়ার করে দিচ্ছি!
+    await state.finish()
+
+    final_category = f"{category} [✅ Done]"
+    import datetime
+    bd_now = datetime.datetime.now() + datetime.timedelta(hours=6)
+    dt_log = bd_now.strftime("%d/%m/%Y %I:%M %p") 
+    today = datetime.date.today().strftime("%Y-%m-%d")
+
+    amount_to_add = 0 
+    if category == "IG Cookies":
+        amount_to_add = 4
+    elif category == "IG Mother Account":
+        amount_to_add = 7
+    elif category == "IG 2fa":
+        amount_to_add = 3
+
+    try:
+        # --- সমান্তরাল (Parallel) ডাটাবেস অপারেশন ---
+        # এই তিনটি কাজ আলাদা থ্রেডে চলবে, ফলে বট হ্যাং হবে না
+        
+        def save_log_task():
+            log_data = {
+                "user_id": user_id, 
+                "category": final_category, 
+                "u_id": str(username), 
+                "u_pass": str(password), 
+                "two_fa": str(tfa_code), 
+                "date_time": dt_log
+            }
+            supabase.table("user_id_logs").insert(log_data).execute()
+
+        def update_stats_task():
+            stats_res = supabase.table("daily_stats").select("single_id_count").eq("user_id", user_id).eq("date", today).execute()
+            if stats_res.data:
+                current_count = stats_res.data[0].get('single_id_count', 0)
+                supabase.table("daily_stats").update({"single_id_count": current_count + 1}).eq("user_id", user_id).eq("date", today).execute()
+            else:
+                supabase.table("daily_stats").insert({"user_id": user_id, "date": today, "single_id_count": 1}).execute()
+
+        def update_balance_task():
+            if amount_to_add > 0:
+                bal_res = supabase.table("balances").select("pending_balance").eq("user_id", user_id).execute()
+                if bal_res.data:
+                    current_pending = bal_res.data[0].get('pending_balance', 0)
+                    supabase.table("balances").update({"pending_balance": current_pending + amount_to_add}).eq("user_id", user_id).execute()
+
+        # ২. তিনটি কাজ একসাথে (Gather) রান করানো হচ্ছে
+        await asyncio.gather(
+            asyncio.to_thread(save_log_task),
+            asyncio.to_thread(update_stats_task),
+            asyncio.to_thread(update_balance_task)
         )
 
-        import datetime
-        # ২. লোকাল ডাটাবেসে সেভ করা
-        bd_now = datetime.datetime.now() + datetime.timedelta(hours=6)
-        dt_log = bd_now.strftime("%d/%m/%Y %I:%M %p") 
-        cursor.execute("INSERT INTO user_id_logs (user_id, category, u_id, u_pass, two_fa, date_time) VALUES (?, ?, ?, ?, ?, ?)", 
-                       (message.from_user.id, category, username, password, tfa_code, dt_log))
-        
-        # ৩. ইউজারের স্ট্যাটাস আপডেট
-        today = datetime.date.today().strftime("%Y-%m-%d")
-        cursor.execute("INSERT OR IGNORE INTO stats (user_id, date) VALUES (?, ?)", (message.from_user.id, today))
-        cursor.execute("UPDATE stats SET single_id_count = single_id_count + 1 WHERE user_id=? AND date=?", (message.from_user.id, today))
-
-        # ৪. ব্যালেন্স অ্যাড করা
-        amount_to_add = 0 
-        if category == "IG Cookies":
-            amount_to_add = 4
-        elif category == "IG Mother Account":
-            amount_to_add = 7
-        elif category == "IG 2fa":
-            amount_to_add = 3
-
-        if amount_to_add > 0:
-            cursor.execute("UPDATE users SET pending_balance = pending_balance + ? WHERE user_id = ?", (amount_to_add, message.from_user.id))
-        db.commit()
-
-        # ৫. অ্যাডমিনকে রিপোর্ট পাঠানো
+        # ৩. অ্যাডমিনকে রিপোর্ট পাঠানো
         admin_report = (
             f"🚀 <b>নতুন অটো-টাস্ক সম্পন্ন!</b>\n"
             f"👤 <b>ইউজার:</b> {message.from_user.full_name}\n"
-            f"🆔 <b>আইডি:</b> <code>{message.from_user.id}</code>\n"
+            f"🆔 <b>আইডি:</b> <code>{user_id}</code>\n"
             f"📂 <b>ক্যাটাগরি:</b> {category}\n"
             f"━━━━━━━━━━━━━━━\n"
             f"🆔 <b>ID:</b> <code>{username}</code>\n"
             f"🔑 <b>Pass:</b> <code>{password}</code>\n"
             f"🔐 <b>2FA:</b> <code>{tfa_code}</code>"
         )
-        await bot.send_message(FILE_ADMIN_ID, admin_report, parse_mode="HTML")
+        try:
+            await bot.send_message(FILE_ADMIN_ID, admin_report, parse_mode="HTML")
+        except:
+            pass
 
-        # ৬. সাকসেস মেসেজ ও নতুন কিবোর্ড
+        # ৪. সাকসেস মেসেজ ও নতুন কিবোর্ড
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add(f"➕ আরেকটি {category} পাঠান") 
         markup.add("🏠 মেইন মেনু")
@@ -511,14 +534,14 @@ async def process_auto_2fa_submission(message: types.Message, state: FSMContext)
             f"<b>✅ আইডি সফলভাবে জমা হয়েছে!</b>\n\n"
             f"👤 ইউজারনেম: <code>{username}</code>\n"
             f"📊 স্ট্যাটাস: <b>🟢 সম্পন্ন (Done)</b>\n\n"
-            f"ধন্যবাদ! আপনার তথ্য ডাটাবেসে সেভ করা হয়েছে।", 
+            f"ধন্যবাদ! আপনার তথ্য ডাটাবেসে সেভ করা হয়েছে এবং ব্যালেন্স যোগ হয়েছে।", 
             reply_markup=markup, parse_mode="HTML"
         )
-        
-        await state.finish()
-    else:
-        await message.answer("⚠️ সেশন এরর! দয়া করে মেনু থেকে আবার ক্যাটাগরি সিলেক্ট করুন।", reply_markup=main_menu())
-        await state.finish()
+
+    except Exception as e:
+        print(f"Final Submit Error: {e}")
+        await message.answer("❌ ডাটাবেস ব্যস্ত আছে। দয়া করে একটু পর আবার চেষ্টা করুন।", reply_markup=main_menu())
+
 
         # ==========================================
 # নির্দিষ্ট ইউজারের সব আইডি ডিলিট করার কমান্ড
