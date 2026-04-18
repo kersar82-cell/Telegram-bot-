@@ -103,9 +103,13 @@ class BotState(StatesGroup):
     waiting_for_auto_2fa = State() # এটি নতুন লাইন
 
 async def is_blocked(user_id):
-    cursor.execute("SELECT user_id FROM blacklist WHERE user_id=?", (user_id,))
-    return cursor.fetchone() is not None
-
+    try:
+        # Supabase থেকে চেক করা হচ্ছে ইউজার ব্লক কি না
+        res = await asyncio.to_thread(supabase.table("blacklist").select("user_id").eq("user_id", user_id).execute)
+        return len(res.data) > 0
+    except Exception:
+        return False
+        
 def main_menu():
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     
@@ -318,47 +322,7 @@ async def ask_work_type(message: types.Message, state: FSMContext):
 
     await message.answer(text, reply_markup=inline_kb, parse_mode="HTML")
 
-# ==========================================
-# ধাপ ৩: নতুন ইউজারনেম জেনারেট বাটন (Regenerate)
-# ==========================================
-@dp.callback_query_handler(lambda c: c.data == "regen_ig_user", state="*")
-async def regenerate_user_logic(call: types.CallbackQuery, state: FSMContext):
-    # নতুন একটি ইউনিক নাম তৈরি করা
-    new_username = generate_ig_username()
-    
-    # মেমোরি থেকে আগের ক্যাটাগরি এবং পাসওয়ার্ড নেওয়া
-    user_data = await state.get_data()
-    category = user_data.get("category", "IG Work")
-    fixed_pass = user_data.get("auto_pass", "UserPass@2026")
 
-    # মেমোরিতে নতুন ইউজারনেমটি আপডেট করে রাখা
-    await state.update_data(auto_user=new_username)
-
-    # ইনলাইন বাটনগুলো আগের মতোই থাকবে
-    inline_kb = types.InlineKeyboardMarkup(row_width=1)
-    inline_kb.add(
-        types.InlineKeyboardButton("🔐 2FA কোড দিন", callback_data="ask_auto_2fa"),
-        types.InlineKeyboardButton("🔄 নতুন ইউজারনেম", callback_data="regen_ig_user"),
-        types.InlineKeyboardButton("🔙 ফিরে যান", callback_data="back_to_main")
-    )
-
-    # মেসেজটি এডিট করা হচ্ছে
-    text = (
-        f"<b>📌 ক্যাটাগরি:</b> {category}\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"<b>👤 Username:</b> <code>{new_username}</code> (Updated ✨)\n"
-        f"<b>🔑 Password:</b> <code>{fixed_pass}</code>\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"<i>💡 নতুন ইউজারনেম জেনারেট হয়েছে। এটি কপি করে লগিন করুন এবং কাজ শেষে ২এফএ কোড দিন।</i>"
-    )
-    
-    try:
-        await call.message.edit_text(text, reply_markup=inline_kb, parse_mode="HTML")
-    except: 
-        pass # একই নাম বারবার আসলে টেলিগ্রাম এডিট করতে দেয় না, তাই Error ইগনোর করা হলো
-        
-    await call.answer("✅ নতুন ইউজারনেম তৈরি হয়েছে!")
-    
 # ==========================================
 # ধাপ ৩: নতুন ইউজারনেম জেনারেট বাটন (High Concurrency Supported)
 # ==========================================
