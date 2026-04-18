@@ -243,17 +243,26 @@ async def start(message: types.Message, state: FSMContext):
     
 # ১. এখানে নামের বানান এবং স্পেস আপনার বাটন অনুযায়ী ঠিক করা হয়েছে
 
-@dp.message_handler(lambda message: message.text == "💻INSTAGRAM WORK")
-async def work_start(message: types.Message):
+        # =========================================================
+# ইনস্টাগ্রাম ওয়ার্ক লজিক (High Concurrency Supported)
+# =========================================================
+
+# ১. ইনস্টাগ্রাম মেনু ওপেন
+@dp.message_handler(lambda message: message.text == "💻INSTAGRAM WORK", state="*")
+async def work_start(message: types.Message, state: FSMContext):
+    # ইউজার যদি অন্য কোনো স্টেটে আটকে থাকে, সেটা ক্লিয়ার করে দেবে
+    await state.finish() 
+    
+    # ব্লক লিস্ট চেক (Supabase থেকে)
     if await is_blocked(message.from_user.id):
         return await message.answer("❌ দুঃখিত, আপনি ব্লকড! আপনি আর কাজ জমা দিতে পারবেন না। \nএডমিনের সাথে কথা বলুন 👍")
     
+    # ইনলাইন কিবোর্ডের বদলে নরমাল রিপ্লাই কিবোর্ড (যাতে নিচে বাটনগুলো সুন্দর করে বসে)
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    
-    # বাটনগুলো সাজানো
     keyboard.row("IG Mother Account", "IG 2fa")
     keyboard.row("IG Cookies", "🔄 রিফ্রেশ") 
     
+    # আপনার ভিপিএনের তথ্য
     msg = """🔐NORD VPN
 🌐Email > gaughan9999@hotmail.co.uk
 🔐Pass  > Auders*1
@@ -264,16 +273,17 @@ async def work_start(message: types.Message):
 🌐Email > thomasvcrowl@gmail.com
 🔐Pass  > HeretiC762!!"""
 
-    # এখানে parse_mode সরিয়ে দেওয়া হয়েছে যাতে স্পেশাল ক্যারেক্টারের কারণে এরর না আসে
     await message.answer(msg, reply_markup=keyboard)
-
-                    
+    
 # এই হ্যান্ডলারটি এখন একদম পারফেক্ট কাজ করবে
-@dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa", "IG Cookies"])
+# ==========================================
+# ধাপ ২: ক্যাটাগরি সিলেক্ট এবং অটোমেটিক ইউজারনেম
+# ==========================================
+@dp.message_handler(lambda message: message.text in ["IG Mother Account", "IG 2fa", "IG Cookies"], state="*")
 async def ask_work_type(message: types.Message, state: FSMContext):
     category = message.text
     
-    # আপনার আগের অন/অফ লজিকগুলো ঠিক রাখা হয়েছে
+    # অন/অফ চেক (সুইচ বন্ধ থাকলে কাজ করতে দিবে না)
     if category == "IG Mother Account" and not IG_MOTHER_ENABLED:
         return await message.answer("⚠️ দুঃখিত, বর্তমানে IG Mother Account কাজ সাময়িকভাবে বন্ধ আছে।")
     if category == "IG 2fa" and not IG_2FA_ENABLED:
@@ -282,20 +292,21 @@ async def ask_work_type(message: types.Message, state: FSMContext):
         return await message.answer("⚠️ দুঃখিত, বর্তমানে IG Cookies কাজ সাময়িকভাবে বন্ধ আছে।")
 
     # অটোমেটিক ইউজারনেম এবং ফিক্সড পাসওয়ার্ড জেনারেট
-    username = generate_ig_username() # এটি ধাপ ২ এর ফাংশন থেকে আসবে
+    username = generate_ig_username()
     fixed_password = "UserPass@2026" 
 
-    # ডাটাগুলো বটের মেমোরিতে সেভ রাখা
+    # ডাটাগুলো বটের মেমোরিতে (State) সেভ রাখা
     await state.update_data(auto_user=username, auto_pass=fixed_password, category=category)
 
-    # ইনলাইন বাটন তৈরি (HTML এর জন্য ইনলাইন বাটনই বেস্ট)
+    # ইনলাইন বাটন তৈরি
     inline_kb = types.InlineKeyboardMarkup(row_width=1)
-    btn_2fa = types.InlineKeyboardButton("🔐 2FA কোড দিন", callback_data="ask_auto_2fa")
-    btn_regen = types.InlineKeyboardButton("🔄 নতুন ইউজারনেম (Regenerate)", callback_data="regen_ig_user")
-    btn_back = types.InlineKeyboardButton("🔙 ফিরে যান", callback_data="back_to_main")
-    inline_kb.add(btn_2fa, btn_regen, btn_back)
+    inline_kb.add(
+        types.InlineKeyboardButton("🔐 2FA কোড দিন", callback_data="ask_auto_2fa"),
+        types.InlineKeyboardButton("🔄 নতুন ইউজারনেম", callback_data="regen_ig_user"),
+        types.InlineKeyboardButton("🔙 ফিরে যান", callback_data="back_to_main")
+    )
 
-    # HTML ফরম্যাটে মেসেজ (<code> ব্যবহারের ফলে ক্লিক করলে কপি হবে)
+    # HTML ফরম্যাটে মেসেজ (কপি করার সুবিধার জন্য <code> ট্যাগ)
     text = (
         f"<b>✅ আপনি বেছে নিয়েছেন:</b> {category}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
@@ -306,7 +317,10 @@ async def ask_work_type(message: types.Message, state: FSMContext):
     )
 
     await message.answer(text, reply_markup=inline_kb, parse_mode="HTML")
-    # ১. "🔄 নতুন ইউজারনেম" বাটনের কাজ (Regenerate)
+
+# ==========================================
+# ধাপ ৩: নতুন ইউজারনেম জেনারেট বাটন (Regenerate)
+# ==========================================
 @dp.callback_query_handler(lambda c: c.data == "regen_ig_user", state="*")
 async def regenerate_user_logic(call: types.CallbackQuery, state: FSMContext):
     # নতুন একটি ইউনিক নাম তৈরি করা
@@ -322,12 +336,13 @@ async def regenerate_user_logic(call: types.CallbackQuery, state: FSMContext):
 
     # ইনলাইন বাটনগুলো আগের মতোই থাকবে
     inline_kb = types.InlineKeyboardMarkup(row_width=1)
-    btn_2fa = types.InlineKeyboardButton("🔐 2FA কোড দিন", callback_data="ask_auto_2fa")
-    btn_regen = types.InlineKeyboardButton("🔄 নতুন ইউজারনেম (Regenerate)", callback_data="regen_ig_user")
-    btn_back = types.InlineKeyboardButton("🔙 ফিরে যান", callback_data="back_to_main")
-    inline_kb.add(btn_2fa, btn_regen, btn_back)
+    inline_kb.add(
+        types.InlineKeyboardButton("🔐 2FA কোড দিন", callback_data="ask_auto_2fa"),
+        types.InlineKeyboardButton("🔄 নতুন ইউজারনেম", callback_data="regen_ig_user"),
+        types.InlineKeyboardButton("🔙 ফিরে যান", callback_data="back_to_main")
+    )
 
-    # HTML ফরম্যাটে আগের মেসেজটি এডিট করা (যাতে স্ক্রিন ক্লিন থাকে)
+    # মেসেজটি এডিট করা হচ্ছে
     text = (
         f"<b>📌 ক্যাটাগরি:</b> {category}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
@@ -339,31 +354,93 @@ async def regenerate_user_logic(call: types.CallbackQuery, state: FSMContext):
     
     try:
         await call.message.edit_text(text, reply_markup=inline_kb, parse_mode="HTML")
-        await call.answer("✅ নতুন ইউজারনেম তৈরি হয়েছে!")
-    except Exception as e:
-        await call.answer("⚠️ কোনো পরিবর্তন হয়নি বা এরর হয়েছে।")
-# 2FA কোড নেওয়ার জন্য নতুন হ্যান্ডলার
+    except: 
+        pass # একই নাম বারবার আসলে টেলিগ্রাম এডিট করতে দেয় না, তাই Error ইগনোর করা হলো
+        
+    await call.answer("✅ নতুন ইউজারনেম তৈরি হয়েছে!")
+    
+# ==========================================
+# ধাপ ৩: নতুন ইউজারনেম জেনারেট বাটন (High Concurrency Supported)
+# ==========================================
+@dp.callback_query_handler(lambda c: c.data == "regen_ig_user", state="*")
+async def regenerate_user_logic(call: types.CallbackQuery, state: FSMContext):
+    # ১. প্রথমেই কলব্যাক অ্যানসার করে দেওয়া যাতে ইউজারের স্ক্রিনে লোডিং আটকে না থাকে
+    await call.answer("⏳ জেনারেট হচ্ছে...")
+    
+    # ২. নন-ব্লকিং ভাবে ইউজারনেম জেনারেট করা (১০০০ জন একসাথে চাপলেও বট হ্যাং হবে না)
+    new_username = await asyncio.to_thread(generate_ig_username)
+    
+    # ৩. মেমোরি থেকে আগের ক্যাটাগরি এবং পাসওয়ার্ড নেওয়া
+    user_data = await state.get_data()
+    category = user_data.get("category", "IG Work")
+    fixed_pass = user_data.get("auto_pass", "UserPass@2026")
+
+    # ৪. মেমোরিতে নতুন ইউজারনেমটি আপডেট করে রাখা
+    await state.update_data(auto_user=new_username)
+
+    # ৫. ইনলাইন বাটনগুলো সেট করা
+    inline_kb = types.InlineKeyboardMarkup(row_width=1)
+    btn_2fa = types.InlineKeyboardButton("🔐 2FA কোড দিন", callback_data="ask_auto_2fa")
+    btn_regen = types.InlineKeyboardButton("🔄 নতুন ইউজারনেম (Regenerate)", callback_data="regen_ig_user")
+    btn_back = types.InlineKeyboardButton("🔙 ফিরে যান", callback_data="back_to_main")
+    inline_kb.add(btn_2fa, btn_regen, btn_back)
+
+    # ৬. HTML ফরম্যাটে মেসেজ তৈরি
+    text = (
+        f"<b>📌 ক্যাটাগরি:</b> {category}\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"<b>👤 Username:</b> <code>{new_username}</code> (Updated ✨)\n"
+        f"<b>🔑 Password:</b> <code>{fixed_pass}</code>\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"<i>💡 নতুন ইউজারনেম জেনারেট হয়েছে। এটি কপি করে লগিন করুন এবং কাজ শেষে ২এফএ কোড দিন।</i>"
+    )
+    
+    try:
+        # মেসেজটি এডিট করা হচ্ছে
+        await call.message.edit_text(text, reply_markup=inline_kb, parse_mode="HTML")
+    except Exception:
+        # একই নাম বারবার আসলে টেলিগ্রাম এডিট করতে দেয় না, তাই Error ইগনোর করা হলো
+        pass 
+    
+# ==========================================
+# ধাপ ৪: 2FA কোড চাওয়া
+# ==========================================
 @dp.callback_query_handler(lambda c: c.data == "ask_auto_2fa", state="*")
 async def trigger_2fa_input(call: types.CallbackQuery):
-    # ইউজারকে 2FA দেওয়ার স্টেটে নিয়ে যাওয়া
+    # ১. দ্রুত রেসপন্স করে ইউজারের লোডিং থামিয়ে দেওয়া
+    await call.answer()
+    
+    # ২. ইউজারকে 2FA দেওয়ার স্টেটে নিয়ে যাওয়া
     await BotState.waiting_for_auto_2fa.set()
     
-    # ইনলাইন মেসেজটি এডিট করে বা নতুন মেসেজ দিয়ে কোড চাওয়া
+    # ৩. HTML ফরম্যাটে মেসেজ দিয়ে কোড চাওয়া
     await call.message.answer(
-        "🔐 **অনুগ্রহ করে আপনার 2FA (Two-Factor Authentication) কোডটি নিচে লিখে পাঠান:**", 
-        parse_mode="Markdown",
+        "🔐 <b>অনুগ্রহ করে আপনার 2FA (Two-Factor Authentication) কোডটি নিচে লিখে পাঠান:</b>", 
+        parse_mode="HTML",
         reply_markup=types.ReplyKeyboardRemove()
     )
-    await call.answer()
-    
-# ২. "🔙 ফিরে যান" বাটনের কাজ
+
+# ==========================================
+# ধাপ ৫: "🔙 ফিরে যান" বাটনের কাজ
+# ==========================================
 @dp.callback_query_handler(lambda c: c.data == "back_to_main", state="*")
 async def go_back_to_home(call: types.CallbackQuery, state: FSMContext):
-    await state.finish() # সব স্টেট ক্লিয়ার করা
-    await call.message.delete() # বর্তমান মেসেজটি মুছে ফেলা
-    await call.message.answer("🏠 আপনি মেইন মেনুতে ফিরে এসেছেন।", reply_markup=main_menu())
+    # ১. দ্রুত রেসপন্স
     await call.answer()
-    # ১. ২এফএ কোড চাওয়ার বাটন হ্যান্ডলার
+    
+    # ২. সব স্টেট ক্লিয়ার করা
+    await state.finish() 
+    
+    # ৩. মেসেজ ডিলিট করা (কেউ একসাথে দুবার চাপলে যাতে বট ক্র্যাশ না করে তাই try-except)
+    try:
+        await call.message.delete() 
+    except Exception:
+        pass
+        
+    # ৪. মেইন মেনু পাঠানো
+    await call.message.answer("🏠 আপনি মেইন মেনুতে ফিরে এসেছেন।", reply_markup=main_menu())
+        
+# ১. ২এফএ কোড চাওয়ার বাটন হ্যান্ডলার
 
         # ২. ২এফএ রিসিভ করে সরাসরি সেভ করা এবং ব্যালেন্স অ্যাড করা
 @dp.message_handler(state=BotState.waiting_for_auto_2fa)
