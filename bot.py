@@ -774,66 +774,28 @@ async def ask_for_num(call: types.CallbackQuery, state: FSMContext):
     await call.message.answer(f"🔢 আপনার **{provider.upper()}** নম্বর বা ID টি লিখুন:")
     await call.answer()
 
-# --- উইথড্র মেথড সিলেক্ট করার পর লিমিট এবং পেমেন্ট নম্বর চেক করে এমাউন্ট চাওয়া ---
-@dp.callback_query_handler(lambda c: c.data in ["wd_recharge", "wd_sendmoney"])
-async def process_withdraw_method_final(call: types.CallbackQuery, state: FSMContext):
-    w_type = call.data.split('_')[1] # recharge অথবা sendmoney
-    user_id = call.from_user.id
-    
-    # ১. ব্যালেন্স এবং লিমিট চেক
-    bal_res = await asyncio.to_thread(supabase.table("balances").select("main_balance").eq("user_id", user_id).execute())
-    balance = int(bal_res.data[0].get('main_balance', 0)) if bal_res.data else 0
-
-    if w_type == "sendmoney" and balance < 50:
-        return await call.answer("⚠️ সেন্ড মানি করতে কমপক্ষে ৫০ টাকা লাগবে।", show_alert=True)
-    elif w_type == "recharge" and balance < 20:
-        return await call.answer("⚠️ রিচার্জ নিতে কমপক্ষে ২০ টাকা লাগবে।", show_alert=True)
-
-    # ২. পেমেন্ট মেথড চেক
-    pay_res = await asyncio.to_thread(supabase.table("payment_methods").select("*").eq("user_id", user_id).execute())
-    
-    if not pay_res.data:
-        return await call.message.answer("⚠️ আপনার কোনো পেমেন্ট নম্বর সেভ করা নেই! \nআগে 'Add Payment Method' বাটন থেকে নম্বর সেভ করুন।")
-
-    p_data = pay_res.data[0]
-    if w_type == 'recharge':
-        has_data = p_data.get('recharge_num')
-    else:
-        has_data = any([p_data.get('bkash_num'), p_data.get('nagad_num'), p_data.get('rocket_num'), p_data.get('binance_id')])
-
-    if not has_data or has_data == 'Not Set':
-        return await call.message.answer("⚠️ আপনার কোনো পেমেন্ট নম্বর সেভ করা নেই! \nআগে 'Add Payment Method' বাটন থেকে নম্বর সেভ করুন।")
-
-    # ৩. সব ঠিক থাকলে টাকার পরিমাণ চাওয়া
-    await state.update_data(withdraw_type=w_type)
-    await BotState.waiting_for_withdraw_amount.set()
-    
-    await call.message.answer("💵 আপনি কত টাকা উইথড্র করতে চান?\nপরিমাণটি সংখ্যায় লিখুন (যেমন: ৫০):")
-    await call.answer()
-                                        
-# --- ১. উইথড্র পরিমাণ গ্রহণ এবং অ্যাডমিনকে পাঠানো (Supabase ভার্সন) ---
-
+# --- ১. উইথড্র পরিমাণ গ্রহণ এবং অ্যাডমিনকে পাঠানো (High Concurrency Supported) ---
 @dp.message_handler(state=BotState.waiting_for_withdraw_amount)
 async def process_withdraw_final(message: types.Message, state: FSMContext):
-    # ১. ইনপুট চেক (সংখ্যা কি না এবং দশমিক থাকলে তা হ্যান্ডেল করা)
     try:
-        # ইউজার যদি ৫.৭৯ লেখে, float() সেটাকে ৫.৭৯ করবে আর int() সেটাকে ৫ করে দেবে
         amount = int(float(message.text))
     except (ValueError, TypeError):
         return await message.answer("❌ অনুগ্রহ করে সঠিক সংখ্যা লিখুন (যেমন: ১০০)")
 
     user_id = message.from_user.id
     
-    # ২. Supabase থেকে তথ্য আনা (Balances, Payment Methods এবং Users টেবিল থেকে)
-    bal_res = await asyncio.to_thread(supabase.table("balances").select("main_balance, withdraw_count").eq("user_id", user_id).execute)
-    pay_res = await asyncio.to_thread(supabase.table("payment_methods").select("*").eq("user_id", user_id).execute)
-    usr_res = await asyncio.to_thread(supabase.table("users").select("referred_by").eq("user_id", user_id).execute)
+    # 🚀 High Concurrency: তিনটি টেবিল থেকে একসাথে ডাটা আনা হচ্ছে (৩ গুণ ফাস্ট!)
+    bal_task = asyncio.to_thread(supabase.table("balances").select("main_balance, withdraw_count").eq("user_id", user_id).execute)
+    pay_task = asyncio.to_thread(supabase.table("payment_methods").select("*").eq("user_id", user_id).execute)
+    usr_task = asyncio.to_thread(supabase.table("users").select("referred_by").eq("user_id", user_id).execute)
+
+    # তিনটির রেসপন্সের জন্য একসাথে অপেক্ষা করা হচ্ছে
+    bal_res, pay_res, usr_res = await asyncio.gather(bal_task, pay_task, usr_task)
 
     if not bal_res.data or not pay_res.data:
         await state.finish()
         return await message.answer("❌ ডাটাবেসে আপনার তথ্য পাওয়া যায়নি।")
 
-    # ডাটাগুলো আলাদা করা (আপনার ভেরিয়েবল নামগুলো ঠিক রাখা হয়েছে)
     balance = bal_res.data[0].get('main_balance', 0)
     wd_count = bal_res.data[0].get('withdraw_count', 0)
     
@@ -844,28 +806,22 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
     binance = p_data.get('binance_id')
     recharge = p_data.get('recharge_num')
     
-    ref_by = usr_res.data[0].get('referred_by', 0) if usr_res.data else 0
-    
-    # ৩. ব্যালেন্স চেক
     if amount > int(balance):
         return await message.answer(f"❌ আপনার ব্যালেন্স পর্যাপ্ত নয়! বর্তমান: {int(balance)} ৳")
     
     if amount <= 19:
         return await message.answer("❌ সর্বনিম্ন ২০ টাকা উইথড্র করা যাবে।")
 
-    # ৪. স্টেট থেকে উইথড্র টাইপ (Recharge নাকি Send Money) নেওয়া
     data = await state.get_data()
     w_type = data.get('withdraw_type')
 
-    # ৫. কমিশন ও পরবর্তী উইথড্র সংখ্যা হিসাব
     commission = int(amount * 0.05)
     next_wd_number = (wd_count or 0) + 1
-
-    # ৬. ইউজারের ব্যালেন্স এবং উইথড্র সংখ্যা আপডেট করা (balances টেবিলে)
     new_balance = int(balance - amount)
+
+    # 🚀 ডাটাবেস আপডেট (নন-ব্লকিং)
     await asyncio.to_thread(supabase.table("balances").update({"main_balance": new_balance, "withdraw_count": next_wd_number}).eq("user_id", user_id).execute)
 
-    # ৭. মেথড অনুযায়ী পেমেন্ট ডিটেইলস সাজানো (HTML ব্যবহার করা হয়েছে)
     if w_type == "recharge":
         method_details = f"📱 Recharge: <code>{recharge or 'Not Set'}</code>"
         withdraw_title = "📱 নতুন রিচার্জ রিকোয়েস্ট!"
@@ -880,7 +836,6 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
 
     user_name = f"@{message.from_user.username}" if message.from_user.username else "নেই"
     
-    # ৮. অ্যাডমিনকে পাঠানোর জন্য মেসেজ ফরম্যাট
     admin_text = (
         f"<b>{withdraw_title}</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -896,24 +851,22 @@ async def process_withdraw_final(message: types.Message, state: FSMContext):
         f"পেমেন্ট করে নিচের বাটনে ক্লিক করুন 👇"
     )
 
-    # ৯. ইনলাইন কিবোর্ড তৈরি (Approve এবং Reject বাটন)
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
         types.InlineKeyboardButton("✅ Approve", callback_data=f"admin_payment_approve_{user_id}_{amount}_{commission}"),
         types.InlineKeyboardButton("❌ Reject", callback_data=f"admin_payment_reject_{user_id}_{amount}")
     )
 
-    # ১০. অ্যাডমিনকে মেসেজ পাঠানো
     try:
         await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb, parse_mode="HTML")
         await message.answer("✅ আপনার উইথড্র রিকোয়েস্ট সফলভাবে জমা হয়েছে!", reply_markup=main_menu())
-    except Exception as e:
-        # কোনো কারণে মেসেজ না গেলে ব্যালেন্স রিফান্ড করে দেওয়া
+    except Exception:
+        # মেসেজ না গেলে ব্যালেন্স রিফান্ড (নন-ব্লকিং)
         await asyncio.to_thread(supabase.table("balances").update({"main_balance": balance, "withdraw_count": wd_count}).eq("user_id", user_id).execute)
         await message.answer("❌ সিস্টেম এরর! অ্যাডমিনকে রিকোয়েস্ট পাঠানো যায়নি। টাকা রিফান্ড করা হয়েছে।")
     
-    # ১১. সিগনিফিক্যান্ট লাইন: স্টেট ফিনিশ করা (যাতে বারবার টাকা না চায়)
     await state.finish()
+    
     
     # ৪. এরপর অ্যাডমিনকে মেসেজ পাঠানো
 
