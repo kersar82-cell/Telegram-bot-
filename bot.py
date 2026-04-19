@@ -773,6 +773,44 @@ async def ask_for_num(call: types.CallbackQuery, state: FSMContext):
     await BotState.waiting_for_method_num.set()
     await call.message.answer(f"🔢 আপনার **{provider.upper()}** নম্বর বা ID টি লিখুন:")
     await call.answer()
+# --- [মাঝখানের ধাপ] উইথড্র মেথড সিলেক্ট করার পর লিমিট চেক করে এমাউন্ট চাওয়া ---
+@dp.callback_query_handler(lambda c: c.data in ["wd_recharge", "wd_sendmoney"])
+async def process_withdraw_method_final(call: types.CallbackQuery, state: FSMContext):
+    w_type = call.data.split('_')[1] # recharge অথবা sendmoney
+    user_id = call.from_user.id
+    
+    # 🚀 High Concurrency: দুটো ডাটাবেস কোয়েরি একসাথে (Parallel) রান করা হচ্ছে
+    bal_task = asyncio.to_thread(supabase.table("balances").select("main_balance").eq("user_id", user_id).execute)
+    pay_task = asyncio.to_thread(supabase.table("payment_methods").select("*").eq("user_id", user_id).execute)
+    
+    # একসাথে ডাটা রিসিভ করা হচ্ছে (বট ব্লক হবে না)
+    bal_res, pay_res = await asyncio.gather(bal_task, pay_task)
+
+    balance = int(bal_res.data[0].get('main_balance', 0)) if bal_res.data else 0
+
+    if w_type == "sendmoney" and balance < 50:
+        return await call.answer("⚠️ সেন্ড মানি করতে কমপক্ষে ৫০ টাকা লাগবে।", show_alert=True)
+    elif w_type == "recharge" and balance < 20:
+        return await call.answer("⚠️ রিচার্জ নিতে কমপক্ষে ২০ টাকা লাগবে।", show_alert=True)
+
+    if not pay_res.data:
+        return await call.message.answer("⚠️ আপনার কোনো পেমেন্ট নম্বর সেভ করা নেই! \nআগে 'Add Payment Method' বাটন থেকে নম্বর সেভ করুন।")
+
+    p_data = pay_res.data[0]
+    if w_type == 'recharge':
+        has_data = p_data.get('recharge_num')
+    else:
+        has_data = any([p_data.get('bkash_num'), p_data.get('nagad_num'), p_data.get('rocket_num'), p_data.get('binance_id')])
+
+    if not has_data or has_data == 'Not Set':
+        return await call.message.answer("⚠️ আপনার কোনো পেমেন্ট নম্বর সেভ করা নেই! \nআগে 'Add Payment Method' বাটন থেকে নম্বর সেভ করুন।")
+
+    # সব ঠিক থাকলে টাকার পরিমাণ চাওয়া
+    await state.update_data(withdraw_type=w_type)
+    await BotState.waiting_for_withdraw_amount.set()
+    
+    await call.message.answer("💵 আপনি কত টাকা উইথড্র করতে চান?\nপরিমাণটি সংখ্যায় লিখুন (যেমন: ৫০):")
+    await call.answer()
 
 # --- ১. উইথড্র পরিমাণ গ্রহণ এবং অ্যাডমিনকে পাঠানো (High Concurrency Supported) ---
 @dp.message_handler(state=BotState.waiting_for_withdraw_amount)
